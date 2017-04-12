@@ -1,3 +1,5 @@
+language: c
+
 env:
  global:
   - secure: "Cb/kKOggE2OG5i0cWqYqF51kQIX7WUTnCcNUGG2t90G7qvOgQv4Mkzh6Ypn0zYxxsDq0jEqfVHUssOXzcXt3//Tc8UOnoXx91wczivHdEVgR1b6inREOphKnk2trW/sHR+DCQO8QfYyTd0Pjnr6WlYfpy8PVJuBg17yOnGjIWsgtdiH8uf1D9Ha0lu4cc1cR5f6XIfvR0+uPyVoRhhO+9hGEnGqnGeqxq6zxDKqDCClc6DkOsQxQFr7ykUDAQha44VIOJuie4uRAnBnAm25zRSJSRgYNAjXt6OybZgRXRo3GhrDWl5A6N/A2wVwtV5b2OWLFSLFUS3NcyOSawqA7qLS7iiddhK6h9dIyukdpyCo3UJlBz+5Mq/Pdu3YyDNz1LZDyuEp8tI8IgBxStQLvCCa//kfr597iaFkv3RTzuJ9uBBvE2o27Du49xr4zzSuqkVI45/MlxrFxbxBA7BeRYb08/YrO8PyiRG2ss3rzLpaJ4WPAvB5qXOdF78DgAYdAo/C9Uu7Z0qXyNxmPll5WTr1UY+3sKXpr50sy4fWlvwexoK9mu5VckKAybP/s7MQLapYp4Pv/0P+ayZXewkMixzyWdLxDNvg611TlLFnzl2IPRi1iRxe3Ul3MMNaG3JIXRdSg3dW/0qr/Dn6nAcZ47rHADb2gM8M20IE3eAPmh/s="
@@ -7,12 +9,14 @@ before_install:
  - sudo apt-get -qq update
  - sudo apt-get install -y ed
 
+script: true
+
 addons:
  coverity_scan:
   project:
    name: "mirabilos/mksh"
    description: "mksh Coverity/Travis"
   notification_email: tg@mirbsd.de
-  build_command_prepend: "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && exec sh Build.sh -M"
+  build_command_prepend: "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && sh Build.sh -M"
   build_command: "make -f GNUmakefile -j4 all"
   branch_pattern: coverity_scan
