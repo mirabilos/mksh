@@ -38,7 +38,7 @@
 #endif
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.338 2017/04/08 01:07:15 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.340 2017/04/12 17:46:29 tg Exp $");
 
 #if HAVE_KILLPG
 /*
@@ -189,8 +189,8 @@ static const struct t_op {
 	{"-f",	TO_FILREG },
 	{"-G",	TO_FILGID },
 	{"-g",	TO_FILSETG },
-	{"-h",	TO_FILSYM },
 	{"-H",	TO_FILCDF },
+	{"-h",	TO_FILSYM },
 	{"-k",	TO_FILSTCK },
 	{"-L",	TO_FILSYM },
 	{"-n",	TO_STNZE },
@@ -198,10 +198,11 @@ static const struct t_op {
 	{"-o",	TO_OPTION },
 	{"-p",	TO_FILFIFO },
 	{"-r",	TO_FILRD },
-	{"-s",	TO_FILGZ },
 	{"-S",	TO_FILSOCK },
+	{"-s",	TO_FILGZ },
 	{"-t",	TO_FILTT },
 	{"-u",	TO_FILSETU },
+	{"-v",	TO_ISSET },
 	{"-w",	TO_FILWR },
 	{"-x",	TO_FILEX },
 	{"-z",	TO_STZER },
@@ -2577,14 +2578,13 @@ c_mknod(const char **wp)
 		| "(" oexpr ")"
 		;
 
-	unary-operator ::= "-a"|"-r"|"-w"|"-x"|"-e"|"-f"|"-d"|"-c"|"-b"|"-p"|
-			   "-u"|"-g"|"-k"|"-s"|"-t"|"-z"|"-n"|"-o"|"-O"|"-G"|
-			   "-L"|"-h"|"-S"|"-H";
+	unary-operator ::= "-a"|"-b"|"-c"|"-d"|"-e"|"-f"|"-G"|"-g"|"-H"|"-h"|
+			   "-k"|"-L"|"-n"|"-O"|"-o"|"-p"|"-r"|"-S"|"-s"|"-t"|
+			   "-u"|"-v"|"-w"|"-x"|"-z";
 
-	binary-operator ::= "="|"=="|"!="|"-eq"|"-ne"|"-ge"|"-gt"|"-le"|"-lt"|
-			    "-nt"|"-ot"|"-ef"|
-			    "<"|">"	# rules used for [[ ... ]] expressions
-			    ;
+	binary-operator ::= "="|"=="|"!="|"<"|">"|"-eq"|"-ne"|"-gt"|"-ge"|
+			    "-lt"|"-le"|"-ef"|"-nt"|"-ot";
+
 	operand ::= <anything>
 */
 
@@ -2753,6 +2753,7 @@ test_eval(Test_env *te, Test_op op, const char *opnd1, const char *opnd2,
 	size_t k;
 	struct stat b1, b2;
 	mksh_ari_t v1, v2;
+	struct tbl *vp;
 
 	if (!do_eval)
 		return (0);
@@ -2799,6 +2800,10 @@ test_eval(Test_env *te, Test_op op, const char *opnd1, const char *opnd2,
 	case TO_STZER:
 		return (*opnd1 == '\0');
 
+	/* -v */
+	case TO_ISSET:
+		return ((vp = isglobal(opnd1, false)) && (vp->flag & ISSET));
+
 	/* -o */
 	case TO_OPTION:
 		if ((i = *opnd1) == '!' || i == '?')
@@ -2827,7 +2832,7 @@ test_eval(Test_env *te, Test_op op, const char *opnd1, const char *opnd2,
 	case TO_FILEXST:
 		return (test_stat(opnd1, &b1) == 0);
 
-	/* -r */
+	/* -f */
 	case TO_FILREG:
 		return (test_stat(opnd1, &b1) == 0 && S_ISREG(b1.st_mode));
 
@@ -2928,7 +2933,7 @@ test_eval(Test_env *te, Test_op op, const char *opnd1, const char *opnd2,
 	 * Binary Operators
 	 */
 
-	/* = */
+	/* =, == */
 	case TO_STEQL:
 		if (te->flags & TEF_DBRACKET) {
 			if ((i = gmatchx(opnd1, opnd2, false)))
