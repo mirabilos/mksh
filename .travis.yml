@@ -1,0 +1,6 @@
+language: c
+compiler:
+ - clang
+ - gcc
+before_script: sh Build.sh -M
+script: make -f GNUmakefile all && exec make -f GNUmakefile regress
