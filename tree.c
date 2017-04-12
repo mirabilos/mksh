@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/tree.c,v 1.87 2017/04/06 01:59:58 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/tree.c,v 1.89 2017/04/12 16:46:23 tg Exp $");
 
 #define INDENT	8
 
@@ -58,7 +58,7 @@ ptree(struct op *t, int indent, struct shf *shf)
 	case TCOM:
 		prevent_semicolon = false;
 		/* special-case 'var=<<EOF' (cf. exec.c:execute) */
-		if (
+		if (t->args &&
 		    /* we have zero arguments, i.e. no program to run */
 		    t->args[0] == NULL &&
 		    /* we have exactly one variable assignment */
@@ -365,6 +365,8 @@ wdvarput(struct shf *shf, const char *wp, int quotelevel, int opmode)
 		case COMSUB:
 			shf_puts("$(", shf);
 			cs = ")";
+			if (*wp == '(' /*)*/)
+				shf_putc(' ', shf);
  pSUB:
 			while ((c = *wp++) != 0)
 				shf_putc(c, shf);
