@@ -2,5 +2,8 @@ language: c
 compiler:
  - clang
  - gcc
+before_install:
+ - sudo apt-get -qq update
+ - sudo apt-get install -y ed
 before_script: sh Build.sh -M
 script: make -f GNUmakefile all && exec make -f GNUmakefile regress
