@@ -5,5 +5,5 @@ compiler:
 before_install:
  - sudo apt-get -qq update
  - sudo apt-get install -y ed
-before_script: "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && exec sh Build.sh -M"
-script: "make -f GNUmakefile all && exec make -f GNUmakefile regress"
+before_script: "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && sh Build.sh -M"
+script: "make -f GNUmakefile all && make -f GNUmakefile regress"
