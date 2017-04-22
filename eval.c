@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.201 2017/04/06 01:59:54 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.203 2017/04/22 00:07:08 tg Exp $");
 
 /*
  * string expansion
@@ -845,7 +845,7 @@ expand(
 						doblank--;
 					continue;
 				}
-				c = ifs0;
+				c = ord(ifs0);
 				if ((f & DOHEREDOC)) {
 					/* pseudo-field-split reliably */
 					if (c == 0)
@@ -1555,7 +1555,7 @@ glob(char *cp, XPtrV *wp, bool markdirs)
 		XPput(*wp, debunk(cp, cp, strlen(cp) + 1));
 	else
 		qsort(XPptrv(*wp) + oldsize, XPsize(*wp) - oldsize,
-		    sizeof(void *), xstrcmp);
+		    sizeof(void *), ascpstrcmp);
 }
 
 #define GF_NONE		0

@@ -28,7 +28,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.321 2017/04/12 16:46:20 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.325 2017/04/22 00:07:06 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -76,7 +76,7 @@ static int modified;			/* buffer has been "modified" */
 static char *holdbufp;			/* place to hold last edit buffer */
 
 /* 0=dumb 1=tmux (for now) */
-static bool x_term_mode;
+static uint8_t x_term_mode;
 
 static void x_adjust(void);
 static int x_getc(void);
@@ -97,6 +97,7 @@ static void x_init_prompt(bool);
 #if !MKSH_S_NOVI
 static int x_vi(char *);
 #endif
+static void x_intr(int, int) MKSH_A_NORETURN;
 
 #define x_flush()	shf_flush(shl_out)
 #if defined(MKSH_SMALL) && !defined(MKSH_SMALL_BUT_FAST)
@@ -467,7 +468,7 @@ path_order_cmp(const void *aa, const void *bb)
 	const struct path_order_info *b = (const struct path_order_info *)bb;
 	int t;
 
-	if ((t = strcmp(a->word + a->base, b->word + b->base)))
+	if ((t = ascstrcmp(a->word + a->base, b->word + b->base)))
 		return (t);
 	if (a->path_order > b->path_order)
 		return (1);
@@ -535,7 +536,7 @@ x_command_glob(int flags, char *toglob, char ***wordsp)
 		char **words = (char **)XPptrv(w);
 		size_t i, j;
 
-		qsort(words, nwords, sizeof(void *), xstrcmp);
+		qsort(words, nwords, sizeof(void *), ascpstrcmp);
 		for (i = j = 0; i < nwords - 1; i++) {
 			if (strcmp(words[i], words[i + 1]))
 				words[j++] = words[i];
@@ -908,11 +909,6 @@ struct x_defbindings {
 #define	XF_NOBIND	2	/* not allowed to bind to function */
 #define	XF_PREFIX	4	/* function sets prefix */
 
-/* Separator for completion */
-#define	is_cfs(c)	((c) == ' ' || (c) == '\t' || (c) == '"' || (c) == '\'')
-/* Separator for motion */
-#define	is_mfs(c)	(!(ksh_isalnux(c) || (c) == '$' || ((c) & 0x80)))
-
 #define X_NTABS		4			/* normal, meta1, meta2, pc */
 #define X_TABSZ		256			/* size of keydef tables etc */
 
@@ -991,6 +987,7 @@ static void x_bs3(char **);
 static int x_size2(char *, char **);
 static void x_zots(char *);
 static void x_zotc3(char **);
+static void x_vi_zotc(int);
 static void x_load_hist(char **);
 static int x_search(char *, int, int);
 #ifndef MKSH_SMALL
@@ -1299,9 +1296,7 @@ x_emacs(char *buf)
 			return (i);
 		case KINTR:
 			/* special case for interrupt */
-			trapsig(SIGINT);
-			x_mode(false);
-			unwind(LSHELL);
+			x_intr(SIGINT, c);
 		}
 		/* ad-hoc hack for fixing the cursor position */
 		x_goto(xcp);
@@ -2313,14 +2308,28 @@ x_meta_yank(int c MKSH_A_UNUSED)
 	return (KSTD);
 }
 
-static int
-x_abort(int c MKSH_A_UNUSED)
+/* fake receiving an interrupt */
+static void
+x_intr(int signo, int c)
 {
-	/* x_zotc(c); */
+	x_vi_zotc(c);
+	*xep = '\0';
+	strip_nuls(xbuf, xep - xbuf);
+	if (*xbuf)
+		histsave(&source->line, xbuf, HIST_STORE, true);
 	xlp = xep = xcp = xbp = xbuf;
 	xlp_valid = true;
 	*xcp = 0;
 	x_modified();
+	x_flush();
+	trapsig(signo);
+	x_mode(false);
+	unwind(LSHELL);
+}
+
+static int
+x_abort(int c MKSH_A_UNUSED)
+{
 	return (KINTR);
 }
 
@@ -3396,7 +3405,6 @@ static int complete_word(int, int);
 static int print_expansions(struct edstate *, int);
 #define char_len(c)	((ISCTRL((unsigned char)c) && \
 			/* but not C1 */ (unsigned char)c < 0x80) ? 2 : 1)
-static void x_vi_zotc(int);
 static void vi_error(void);
 static void vi_macro_reset(void);
 static int x_vi_putbuf(const char *, size_t);
@@ -3587,13 +3595,14 @@ x_vi(char *buf)
 		if (state != VLIT) {
 			if (isched(c, edchars.intr) ||
 			    isched(c, edchars.quit)) {
+				/* shove input buffer away */
+				xbuf = ebuf.cbuf;
+				xep = xbuf;
+				if (ebuf.linelen > 0)
+					xep += ebuf.linelen;
 				/* pretend we got an interrupt */
-				x_vi_zotc(c);
-				x_flush();
-				trapsig(isched(c, edchars.intr) ?
-				    SIGINT : SIGQUIT);
-				x_mode(false);
-				unwind(LSHELL);
+				x_intr(isched(c, edchars.intr) ?
+				    SIGINT : SIGQUIT, c);
 			} else if (isched(c, edchars.eof) &&
 			    state != VVERSION) {
 				if (vs->linelen == 0) {
@@ -3671,7 +3680,7 @@ vi_hook(int ch)
 				return (1);
 			cmdlen = 0;
 			argc1 = 0;
-			if (ch >= ord('1') && ch <= ord('9')) {
+			if (ksh_isdigit(ch)) {
 				argc1 = ksh_numdig(ch);
 				state = VARG1;
 			} else {
@@ -3726,7 +3735,7 @@ vi_hook(int ch)
 
 	case VEXTCMD:
 		argc2 = 0;
-		if (ch >= ord('1') && ch <= ord('9')) {
+		if (ksh_isdigit(ch)) {
 			argc2 = ksh_numdig(ch);
 			state = VARG2;
 			return (0);
@@ -5460,6 +5469,7 @@ print_expansions(struct edstate *est, int cmd MKSH_A_UNUSED)
 	redraw_line(false);
 	return (0);
 }
+#endif /* !MKSH_S_NOVI */
 
 /* Similar to x_zotc(emacs.c), but no tab weirdness */
 static void
@@ -5472,6 +5482,7 @@ x_vi_zotc(int c)
 	x_putc(c);
 }
 
+#if !MKSH_S_NOVI
 static void
 vi_error(void)
 {

@@ -30,7 +30,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.256 2017/04/20 16:34:39 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.258 2017/04/21 20:06:05 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -512,7 +512,7 @@ parse_args(const char **argv,
 		for (i = go.optind; argv[i]; i++)
 			;
 		qsort(&argv[go.optind], i - go.optind, sizeof(void *),
-		    xstrcmp);
+		    ascpstrcmp);
 	}
 	if (arrayset)
 		go.optind += set_array(array, tobool(arrayset > 0),
@@ -661,7 +661,7 @@ gmatchx(const char *s, const char *p, bool isfile)
 	pe = p + strlen(p);
 	/*
 	 * isfile is false iff no syntax check has been done on
-	 * the pattern. If check fails, just to a strcmp().
+	 * the pattern. If check fails, just do a strcmp().
 	 */
 	if (!isfile && !has_globbing(p, pe)) {
 		size_t len = pe - p + 1;
@@ -957,9 +957,23 @@ pat_scan(const unsigned char *p, const unsigned char *pe, bool match_sep)
 }
 
 int
-xstrcmp(const void *p1, const void *p2)
+ascstrcmp(const void *s1, const void *s2)
 {
-	return (strcmp(*(const char * const *)p1, *(const char * const *)p2));
+	const uint8_t *cp1 = s1, *cp2 = s2;
+
+	while (*cp1 == *cp2) {
+		if (*cp1++ == '\0')
+			return (0);
+		++cp2;
+	}
+	return (asc(*cp1) - asc(*cp2));
+}
+
+int
+ascpstrcmp(const void *pstr1, const void *pstr2)
+{
+	return (ascstrcmp(*(const char * const *)pstr1,
+	    *(const char * const *)pstr2));
 }
 
 /* Initialise a Getopt structure */
@@ -2209,7 +2223,7 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		wc = 0;
 		i = 3;
 		while (i--)
-			if ((c = (*fg)()) >= ord('0') && c <= ord('7'))
+			if (ksh_isdigit((c = (*fg)())) && asc(c) <= asc('7'))
 				wc = (wc << 3) + ksh_numdig(c);
 			else {
 				(*fp)(c);
@@ -2237,11 +2251,11 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		n = 0;
 		while (n < i || i == -1) {
 			wc <<= 4;
-			if ((c = (*fg)()) >= ord('0') && c <= ord('9'))
+			if (ksh_isdigit((c = (*fg)())))
 				wc += ksh_numdig(c);
-			else if (c >= ord('A') && c <= ord('F'))
+			else if (asc(c) >= asc('A') && asc(c) <= asc('F'))
 				wc += ksh_numuc(c) + 10;
-			else if (c >= ord('a') && c <= ord('f'))
+			else if (asc(c) >= asc('a') && asc(c) <= asc('f'))
 				wc += ksh_numlc(c) + 10;
 			else {
 				wc >>= 4;
