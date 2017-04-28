@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/syn.c,v 1.120 2017/04/06 01:59:57 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/syn.c,v 1.123 2017/04/28 00:38:33 tg Exp $");
 
 struct nesting_state {
 	int start_token;	/* token than began nesting (eg, FOR) */
@@ -91,7 +91,7 @@ yyparse(bool doalias)
 	c = tpeek(0);
 	if (c == 0 && !outtree)
 		outtree = newtp(TEOF);
-	else if (c != '\n' && c != 0)
+	else if (!ctype(c, C_LF | C_NUL))
 		syntaxerr(NULL);
 }
 
@@ -697,10 +697,10 @@ function_body(char *name, int sALIAS,
 	 * only allow [a-zA-Z_0-9] but this allows more as old pdkshs
 	 * have allowed more; the following were never allowed:
 	 *	NUL TAB NL SP " $ & ' ( ) ; < = > \ ` |
-	 * C_QUOTE covers all but adds # * ? [ ]
+	 * C_QUOTE|C_SPC covers all but adds # * ? [ ]
 	 */
 	for (p = sname; *p; p++)
-		if (ctype(*p, C_QUOTE))
+		if (ctype(*p, C_QUOTE | C_SPC))
 			yyerror(Tinvname, sname, Tfunction);
 
 	/*
@@ -1079,7 +1079,7 @@ parse_usec(const char *s, struct timeval *tv)
 
 	tv->tv_sec = 0;
 	/* parse integral part */
-	while (ksh_isdigit(*s)) {
+	while (ctype(*s, C_DIGIT)) {
 		tt.tv_sec = tv->tv_sec * 10 + ksh_numdig(*s++);
 		/*XXX this overflow check maybe UB */
 		if (tt.tv_sec / 10 != tv->tv_sec) {
@@ -1101,14 +1101,14 @@ parse_usec(const char *s, struct timeval *tv)
 
 	/* parse decimal fraction */
 	i = 100000;
-	while (ksh_isdigit(*s)) {
+	while (ctype(*s, C_DIGIT)) {
 		tv->tv_usec += i * ksh_numdig(*s++);
 		if (i == 1)
 			break;
 		i /= 10;
 	}
 	/* check for junk after fractional part */
-	while (ksh_isdigit(*s))
+	while (ctype(*s, C_DIGIT))
 		++s;
 	if (*s) {
 		errno = EINVAL;

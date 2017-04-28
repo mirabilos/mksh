@@ -5,6 +5,8 @@
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017
  *	mirabilos <m@mirbsd.org>
+ * Copyright (c) 2015
+ *	Daniel Richard G. <skunk@iSKUNK.ORG>
  *
  * Provided that these terms and disclaimer and all copyright notices
  * are retained or reproduced in an accompanying document, permission
@@ -30,7 +32,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.255 2017/04/12 16:46:22 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.268 2017/04/28 03:46:49 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -68,37 +70,6 @@ static int make_path(const char *, const char *, char **, XString *, int *);
 #define DO_SETUID(func, argvec) func argvec
 #endif
 
-/*
- * Fast character classes
- */
-void
-setctypes(const char *s, int t)
-{
-	if (t & C_IFS) {
-		unsigned int i = 0;
-
-		while (++i <= UCHAR_MAX)
-			chtypes[i] &= ~C_IFS;
-		/* include '\0' in C_IFS */
-		chtypes[0] |= C_IFS;
-	}
-	while (*s != 0)
-		chtypes[(unsigned char)*s++] |= t;
-}
-
-void
-initctypes(void)
-{
-	setctypes(letters_uc, C_ALPHX);
-	setctypes(letters_lc, C_ALPHX);
-	chtypes['_'] |= C_ALPHX;
-	setctypes("0123456789", C_DIGIT);
-	setctypes(TC_LEX1, C_LEX1);
-	setctypes("*@#!$-?", C_VAR1);
-	setctypes(TC_IFSWS, C_IFSWS);
-	setctypes("=-+?", C_SUBOP1);
-	setctypes("\t\n \"#$&'()*;<=>?[\\]`|", C_QUOTE);
-}
 
 /* called from XcheckN() to grow buffer */
 char *
@@ -147,7 +118,7 @@ option(const char *n)
 {
 	size_t i = 0;
 
-	if ((n[0] == '-' || n[0] == '+') && n[1] && !n[2])
+	if (ctype(n[0], C_MINUS | C_PLUS) && n[1] && !n[2])
 		while (i < NELEM(options)) {
 			if (OFC(i) == n[1])
 				return (i);
@@ -483,7 +454,7 @@ parse_args(const char **argv,
 		}
 	}
 	if (!(go.info & GI_MINUSMINUS) && argv[go.optind] &&
-	    (argv[go.optind][0] == '-' || argv[go.optind][0] == '+') &&
+	    ctype(argv[go.optind][0], C_MINUS | C_PLUS) &&
 	    argv[go.optind][1] == '\0') {
 		/* lone - clears -v and -x flags */
 		if (argv[go.optind][0] == '-') {
@@ -512,7 +483,7 @@ parse_args(const char **argv,
 		for (i = go.optind; argv[i]; i++)
 			;
 		qsort(&argv[go.optind], i - go.optind, sizeof(void *),
-		    xstrcmp);
+		    ascpstrcmp);
 	}
 	if (arrayset)
 		go.optind += set_array(array, tobool(arrayset > 0),
@@ -533,7 +504,7 @@ getn(const char *s, int *ai)
 
 	do {
 		c = *s++;
-	} while (ksh_isspace(c));
+	} while (ctype(c, C_SPACE));
 
 	switch (c) {
 	case '-':
@@ -545,7 +516,7 @@ getn(const char *s, int *ai)
 	}
 
 	do {
-		if (!ksh_isdigit(c))
+		if (!ctype(c, C_DIGIT))
 			/* not numeric */
 			return (0);
 		if (num.u > 214748364U)
@@ -661,7 +632,7 @@ gmatchx(const char *s, const char *p, bool isfile)
 	pe = p + strlen(p);
 	/*
 	 * isfile is false iff no syntax check has been done on
-	 * the pattern. If check fails, just to a strcmp().
+	 * the pattern. If check fails, just do a strcmp().
 	 */
 	if (!isfile && !has_globbing(p, pe)) {
 		size_t len = pe - p + 1;
@@ -734,7 +705,7 @@ has_globbing(const char *xp, const char *xpe)
 					return (0);
 				in_bracket = false;
 			}
-		} else if ((c & 0x80) && vstrchr("*+?@! ", c & 0x7f)) {
+		} else if ((c & 0x80) && ctype(c & 0x7F, C_PATMO | C_SPC)) {
 			saw_glob = true;
 			if (in_bracket)
 				bnest++;
@@ -752,10 +723,7 @@ has_globbing(const char *xp, const char *xpe)
 			} else if (nest)
 				nest--;
 		}
-		/*
-		 * else must be a MAGIC-MAGIC, or MAGIC-!,
-		 * MAGIC--, MAGIC-], MAGIC-{, MAGIC-, MAGIC-}
-		 */
+		/* else must be MAGIC followed by MAGIC or one of: ]{},!- */
 	}
 	return (saw_glob && !in_bracket && !nest);
 }
@@ -953,16 +921,30 @@ pat_scan(const unsigned char *p, const unsigned char *pe, bool match_sep)
 		if ((*++p == /*(*/ ')' && nest-- == 0) ||
 		    (*p == '|' && match_sep && nest == 0))
 			return (p + 1);
-		if ((*p & 0x80) && vstrchr("*+?@! ", *p & 0x7f))
+		if ((*p & 0x80) && ctype(*p & 0x7F, C_PATMO | C_SPC))
 			nest++;
 	}
 	return (NULL);
 }
 
 int
-xstrcmp(const void *p1, const void *p2)
+ascstrcmp(const void *s1, const void *s2)
 {
-	return (strcmp(*(const char * const *)p1, *(const char * const *)p2));
+	const uint8_t *cp1 = s1, *cp2 = s2;
+
+	while (*cp1 == *cp2) {
+		if (*cp1++ == '\0')
+			return (0);
+		++cp2;
+	}
+	return ((int)asciibetical(*cp1) - (int)asciibetical(*cp2));
+}
+
+int
+ascpstrcmp(const void *pstr1, const void *pstr2)
+{
+	return (ascstrcmp(*(const char * const *)pstr1,
+	    *(const char * const *)pstr2));
 }
 
 /* Initialise a Getopt structure */
@@ -1032,7 +1014,7 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 		go->info |= flag == '-' ? GI_MINUS : GI_PLUS;
 	}
 	go->p++;
-	if (c == '?' || c == ':' || c == ';' || c == ',' || c == '#' ||
+	if (ctype(c, C_QUEST | C_COLON | C_HASH) || c == ';' || c == ',' ||
 	    !(o = cstrchr(optionsp, c))) {
 		if (optionsp[0] == ':') {
 			go->buf[0] = c;
@@ -1086,13 +1068,14 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 		 * argument is missing.
 		 */
 		if (argv[go->optind - 1][go->p]) {
-			if (ksh_isdigit(argv[go->optind - 1][go->p])) {
+			if (ctype(argv[go->optind - 1][go->p], C_DIGIT)) {
 				go->optarg = argv[go->optind - 1] + go->p;
 				go->p = 0;
 			} else
 				go->optarg = NULL;
 		} else {
-			if (argv[go->optind] && ksh_isdigit(argv[go->optind][0])) {
+			if (argv[go->optind] &&
+			    ctype(argv[go->optind][0], C_DIGIT)) {
 				go->optarg = argv[go->optind++];
 				go->p = 0;
 			} else
@@ -1115,8 +1098,8 @@ print_value_quoted(struct shf *shf, const char *s)
 	bool inquote = true;
 
 	/* first, check whether any quotes are needed */
-	while ((c = *p++) >= 32)
-		if (ctype(c, C_QUOTE))
+	while (rtt2asc(c = *p++) >= 32)
+		if (ctype(c, C_QUOTE | C_SPC))
 			inquote = false;
 
 	p = (const unsigned char *)s;
@@ -1154,6 +1137,7 @@ print_value_quoted(struct shf *shf, const char *s)
 		shf_putc('$', shf);
 		shf_putc('\'', shf);
 		while ((c = *p) != 0) {
+#ifndef MKSH_EBCDIC
 			if (c >= 0xC2) {
 				n = utf_mbtowc(&wc, (const char *)p);
 				if (n != (size_t)-1) {
@@ -1162,10 +1146,11 @@ print_value_quoted(struct shf *shf, const char *s)
 					continue;
 				}
 			}
+#endif
 			++p;
 			switch (c) {
 			/* see unbksl() in this file for comments */
-			case 7:
+			case KSH_BEL:
 				c = 'a';
 				if (0)
 					/* FALLTHROUGH */
@@ -1189,11 +1174,11 @@ print_value_quoted(struct shf *shf, const char *s)
 				  c = 't';
 				if (0)
 					/* FALLTHROUGH */
-			case 11:
+			case KSH_VTAB:
 				  c = 'v';
 				if (0)
 					/* FALLTHROUGH */
-			case '\033':
+			case KSH_ESC:
 				/* take E not e because \e is \ in *roff */
 				  c = 'E';
 				/* FALLTHROUGH */
@@ -1203,7 +1188,12 @@ print_value_quoted(struct shf *shf, const char *s)
 				if (0)
 					/* FALLTHROUGH */
 			default:
-				  if (c < 32 || c > 0x7E) {
+#ifdef MKSH_EBCDIC
+				  if (ksh_isctrl(c))
+#else
+				  if (c < 32 || c > 0x7E)
+#endif
+				    {
 					/* FALLTHROUGH */
 			case '\'':
 					shf_fprintf(shf, "\\%03o", c);
@@ -2154,13 +2144,7 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 	fc = (*fg)();
 	switch (fc) {
 	case 'a':
-		/*
-		 * according to the comments in pdksh, \007 seems
-		 * to be more portable than \a (due to HP-UX cc,
-		 * Ultrix cc, old pcc, etc.) so we avoid the escape
-		 * sequence altogether in mksh and assume ASCII
-		 */
-		wc = 7;
+		wc = KSH_BEL;
 		break;
 	case 'b':
 		wc = '\b';
@@ -2169,11 +2153,11 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		if (!cstyle)
 			goto unknown_escape;
 		c = (*fg)();
-		wc = CTRL(c);
+		wc = ksh_toctrl(c);
 		break;
 	case 'E':
 	case 'e':
-		wc = 033;
+		wc = KSH_ESC;
 		break;
 	case 'f':
 		wc = '\f';
@@ -2188,8 +2172,7 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		wc = '\t';
 		break;
 	case 'v':
-		/* assume ASCII here as well */
-		wc = 11;
+		wc = KSH_VTAB;
 		break;
 	case '1':
 	case '2':
@@ -2212,7 +2195,7 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		wc = 0;
 		i = 3;
 		while (i--)
-			if ((c = (*fg)()) >= ord('0') && c <= ord('7'))
+			if (ctype((c = (*fg)()), C_OCTAL))
 				wc = (wc << 3) + ksh_numdig(c);
 			else {
 				(*fp)(c);
@@ -2240,17 +2223,17 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		n = 0;
 		while (n < i || i == -1) {
 			wc <<= 4;
-			if ((c = (*fg)()) >= ord('0') && c <= ord('9'))
-				wc += ksh_numdig(c);
-			else if (c >= ord('A') && c <= ord('F'))
-				wc += ksh_numuc(c) + 10;
-			else if (c >= ord('a') && c <= ord('f'))
-				wc += ksh_numlc(c) + 10;
-			else {
+			if (!ctype((c = (*fg)()), C_SEDEC)) {
 				wc >>= 4;
 				(*fp)(c);
 				break;
 			}
+			if (ctype(c, C_DIGIT))
+				wc += ksh_numdig(c);
+			else if (ctype(c, C_UPPER))
+				wc += ksh_numuc(c) + 10;
+			else
+				wc += ksh_numlc(c) + 10;
 			++n;
 		}
 		if (!n)

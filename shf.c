@@ -25,7 +25,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.79 2017/04/12 17:08:49 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.88 2017/04/28 03:51:14 tg Exp $");
 
 /* flags to shf_emptybuf() */
 #define EB_READSW	0x01	/* about to switch to reading */
@@ -874,11 +874,11 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 				flags |= FL_SIZET;
 				continue;
 			}
-			if (ksh_isdigit(c)) {
+			if (ctype(c, C_DIGIT)) {
 				bool overflowed = false;
 
 				tmp = ksh_numdig(c);
-				while (c = *fmt++, ksh_isdigit(c))
+				while (ctype((c = *fmt++), C_DIGIT))
 					if (notok2mul(2147483647, tmp, 10))
 						overflowed = true;
 					else
@@ -899,7 +899,7 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 			/* nasty format */
 			break;
 
-		if (ksh_isupper(c)) {
+		if (ctype(c, C_UPPER)) {
 			flags |= FL_UPPER;
 			c = ksh_tolower(c);
 		}
@@ -1029,8 +1029,7 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 			if (!(flags & FL_RIGHT)) {
 				/* skip past sign or 0x when padding with 0 */
 				if ((flags & FL_ZERO) && (flags & FL_NUMBER)) {
-					if (*s == '+' || *s == '-' ||
-					    *s == ' ') {
+					if (ctype(*s, C_SPC | C_PLUS | C_MINUS)) {
 						shf_putc(*s, shf);
 						s++;
 						precision--;
@@ -1156,5 +1155,104 @@ cstrerror(int errnum)
 		    "Unknown error: %d", errnum);
 		return (errbuf);
 	}
+}
+#endif
+
+/* fast character classes */
+const uint32_t tpl_ctypes[128] = {
+	/* 0x00 */
+	CiNUL,		CiCNTRL,	CiCNTRL,	CiCNTRL,
+	CiCNTRL,	CiCNTRL,	CiCNTRL,	CiCNTRL,
+	CiCNTRL,	CiTAB,		CiNL,		CiSPX,
+	CiSPX,		CiCR,		CiCNTRL,	CiCNTRL,
+	/* 0x10 */
+	CiCNTRL,	CiCNTRL,	CiCNTRL,	CiCNTRL,
+	CiCNTRL,	CiCNTRL,	CiCNTRL,	CiCNTRL,
+	CiCNTRL,	CiCNTRL,	CiCNTRL,	CiCNTRL,
+	CiCNTRL,	CiCNTRL,	CiCNTRL,	CiCNTRL,
+	/* 0x20 */
+	CiSP,		CiALIAS | CiVAR1,	CiQC,	CiHASH,
+	CiSS,		CiPERCT,	CiQCL,		CiQC,
+	CiQCL,		CiQCL,		CiQCX | CiVAR1,	CiPLUS,
+	CiALIAS,	CiMINUS,	CiALIAS,	CiQCM,
+	/* 0x30 */
+	CiOCTAL,	CiOCTAL,	CiOCTAL,	CiOCTAL,
+	CiOCTAL,	CiOCTAL,	CiOCTAL,	CiOCTAL,
+	CiDIGIT,	CiDIGIT,	CiCOLON,	CiQCL,
+	CiANGLE,	CiEQUAL,	CiANGLE,	CiQUEST,
+	/* 0x40 */
+	CiALIAS | CiVAR1,	CiUPPER | CiHEXLT,
+	CiUPPER | CiHEXLT,	CiUPPER | CiHEXLT,
+	CiUPPER | CiHEXLT,	CiUPPER | CiHEXLT,
+	CiUPPER | CiHEXLT,	CiUPPER,
+	CiUPPER,	CiUPPER,	CiUPPER,	CiUPPER,
+	CiUPPER,	CiUPPER,	CiUPPER,	CiUPPER,
+	/* 0x50 */
+	CiUPPER,	CiUPPER,	CiUPPER,	CiUPPER,
+	CiUPPER,	CiUPPER,	CiUPPER,	CiUPPER,
+	CiUPPER,	CiUPPER,	CiUPPER,	CiQCX | CiBRACK,
+	CiQCX,		CiBRACK,	CiQCM,		CiUNDER,
+	/* 0x60 */
+	CiGRAVE,		CiLOWER | CiHEXLT,
+	CiLOWER | CiHEXLT,	CiLOWER | CiHEXLT,
+	CiLOWER | CiHEXLT,	CiLOWER | CiHEXLT,
+	CiLOWER | CiHEXLT,	CiLOWER,
+	CiLOWER,	CiLOWER,	CiLOWER,	CiLOWER,
+	CiLOWER,	CiLOWER,	CiLOWER,	CiLOWER,
+	/* 0x70 */
+	CiLOWER,	CiLOWER,	CiLOWER,	CiLOWER,
+	CiLOWER,	CiLOWER,	CiLOWER,	CiLOWER,
+	CiLOWER,	CiLOWER,	CiLOWER,	CiCURLY,
+	CiQCL,		CiCURLY,	CiQCM,		CiCNTRL
+};
+
+void
+set_ifs(const char *s)
+{
+	ifs0 = *s;
+	memcpy(ksh_ctypes, tpl_ctypes, sizeof(tpl_ctypes));
+	memset(ksh_ctypes + sizeof(tpl_ctypes), '\0',
+	    sizeof(ksh_ctypes) - sizeof(tpl_ctypes));
+	while (*s)
+		ksh_ctypes[rtt2asc(*s++)] |= CiIFS;
+}
+
+#ifdef MKSH_EBCDIC
+#include <locale.h>
+
+void
+ebcdic_init(void)
+{
+	int i = 256;
+	unsigned char t;
+
+	while (i--)
+		ebcdic_rtt_toascii[i] = i;
+	setlocale(LC_ALL, "");
+	if (__etoa_l(ebcdic_rtt_toascii, 256) != 256) {
+		write(2, "mksh: could not map EBCDIC to ASCII\n", 36);
+		exit(255);
+	}
+
+	i = 0;
+	do {
+		/* fill the complete round-trip map */
+		ebcdic_rtt_fromascii[ebcdic_rtt_toascii[i]] = i;
+		/*
+		 * Only use the converted value if it's in the range
+		 * [0x00; 0x7F], which I checked; the "extended ASCII"
+		 * characters can be any encoding, not just Latin1,
+		 * and the C1 control characters other than NEL are
+		 * hopeless, but we map EBCDIC NEL to ASCII LF so we
+		 * cannot even use C1 NEL.
+		 * If ever we map to Unicode, bump the table width to
+		 * an unsigned int, and or the raw unconverted EBCDIC
+		 * values with 0x01000000 instead.
+		 */
+		if ((t = ebcdic_rtt_toascii[i]) < 0x80U)
+			ebcdic_map[i] = (unsigned short)ord(t);
+		else
+			ebcdic_map[i] = (unsigned short)(0x100U | ord(i));
+	} while (++i < 256);
 }
 #endif

@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.234 2017/04/06 01:59:55 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.237 2017/04/28 00:38:31 tg Exp $");
 
 /*
  * states while lexing word
@@ -220,11 +220,11 @@ yylex(int cf)
 	} else {
 		/* normal lexing */
 		state = (cf & HEREDELIM) ? SHEREDELIM : SBASE;
-		while ((c = getsc()) == ' ' || c == '\t')
+		while (ctype((c = getsc()), C_BLANK))
 			;
 		if (c == '#') {
 			ignore_backslash_newline++;
-			while ((c = getsc()) != '\0' && c != '\n')
+			while (!ctype((c = getsc()), C_NUL | C_LF))
 				;
 			ignore_backslash_newline--;
 		}
@@ -301,8 +301,7 @@ yylex(int cf)
 			}
 			/* FALLTHROUGH */
  Sbase1:		/* includes *(...|...) pattern (*+?@!) */
-			if (c == '*' || c == '@' || c == '+' || c == '?' ||
-			    c == '!') {
+			if (ctype(c, C_PATMO)) {
 				c2 = getsc();
 				if (c2 == '(' /*)*/ ) {
 					*wp++ = OPAT;
@@ -444,10 +443,9 @@ yylex(int cf)
 							statep->ls_adelim.num = 1;
 							statep->nparen = 0;
 							break;
-						} else if (ksh_isdigit(c) ||
-						    c == '('/*)*/ || c == ' ' ||
+						} else if (ctype(c, C_DIGIT | C_DOLAR | C_SPC) ||
 						    /*XXX what else? */
-						    c == '$') {
+						    c == '('/*)*/) {
 							/* substring subst. */
 							if (c != ' ') {
 								*wp++ = CHAR;
@@ -489,7 +487,7 @@ yylex(int cf)
 					 * If this is a trim operation,
 					 * treat (,|,) specially in STBRACE.
 					 */
-					if (ksh_issubop2(c)) {
+					if (ctype(c, C_SUB2)) {
 						ungetsc(c);
 						if (Flag(FSH))
 							PUSH_STATE(STBRACEBOURNE);
@@ -503,14 +501,14 @@ yylex(int cf)
 						else
 							PUSH_STATE(SBRACE);
 					}
-				} else if (ksh_isalphx(c)) {
+				} else if (ctype(c, C_ALPHX)) {
 					*wp++ = OSUBST;
 					*wp++ = 'X';
 					do {
 						Xcheck(ws, wp);
 						*wp++ = c;
 						c = getsc();
-					} while (ksh_isalnux(c));
+					} while (ctype(c, C_ALNUX));
 					*wp++ = '\0';
 					*wp++ = CSUBST;
 					*wp++ = 'X';
@@ -677,7 +675,7 @@ yylex(int cf)
 				 * emitted (in heredocquote:)
 				 */
 				if ((c = getsc()) == '"' || c == '\\' ||
-				    c == '$' || c == '`' || c == /*{*/'}')
+				    ctype(c, C_DOLAR | C_GRAVE) || c == /*{*/'}')
 					goto store_qchar;
 				goto heredocquote;
 			}
@@ -894,8 +892,8 @@ yylex(int cf)
 	dp = Xstring(ws, wp);
 	if (state == SBASE && (
 	    (c == '&' && !Flag(FSH) && !Flag(FPOSIX)) ||
-	    c == '<' || c == '>') && ((c2 = Xlength(ws, wp)) == 0 ||
-	    (c2 == 2 && dp[0] == CHAR && ksh_isdigit(dp[1])))) {
+	    ctype(c, C_ANGLE)) && ((c2 = Xlength(ws, wp)) == 0 ||
+	    (c2 == 2 && dp[0] == CHAR && ctype(dp[1], C_DIGIT)))) {
 		struct ioword *iop = alloc(sizeof(struct ioword), ATEMP);
 
 		iop->unit = c2 == 2 ? ksh_numdig(dp[1]) : c == '<' ? 0 : 1;
@@ -1038,7 +1036,7 @@ yylex(int cf)
 			const char *cp = source->str;
 
 			/* prefer POSIX but not Korn functions over aliases */
-			while (*cp == ' ' || *cp == '\t')
+			while (ctype(*cp, C_BLANK))
 				/*
 				 * this is like getsc() without skipping
 				 * over Source boundaries (including not
@@ -1275,7 +1273,7 @@ getsc_uu(void)
 				source->flags |= s->flags & SF_ALIAS;
 				s = source;
 			} else if (*s->u.tblp->val.s &&
-			    (c = strnul(s->u.tblp->val.s)[-1], ksh_isspace(c))) {
+			    ctype((c = strnul(s->u.tblp->val.s)[-1]), C_SPACE)) {
 				/* pop source stack */
 				source = s = s->next;
 				/*
@@ -1435,7 +1433,7 @@ getsc_line(Source *s)
 	} else if (interactive && cur_prompt == PS1) {
  check_for_sole_return:
 		cp = Xstring(s->xs, xp);
-		while (*cp && ctype(*cp, C_IFSWS))
+		while (ctype(*cp, C_IFSWS))
 			++cp;
 		if (!*cp) {
 			histsave(&s->line, NULL, HIST_FLUSH, true);
@@ -1528,7 +1526,7 @@ pprompt(const char *cp, int ntruncate)
 	for (; *cp; cp++) {
 		if (indelimit && *cp != delimiter)
 			;
-		else if (*cp == '\n' || *cp == '\r') {
+		else if (ctype(*cp, C_CR | C_LF)) {
 			lines += columns / x_cols + ((*cp == '\n') ? 1 : 0);
 			columns = 0;
 		} else if (*cp == '\t') {
@@ -1610,9 +1608,9 @@ get_brace_var(XString *wsp, char *wp)
 			/* FALLTHROUGH */
 		case PS_SAW_PERCENT:
  ps_common:
-			if (ksh_isalphx(c))
+			if (ctype(c, C_ALPHX))
 				state = PS_IDENT;
-			else if (ksh_isdigit(c))
+			else if (ctype(c, C_DIGIT))
 				state = PS_NUMBER;
 			else if (ctype(c, C_VAR1))
 				state = PS_VAR1;
@@ -1620,7 +1618,7 @@ get_brace_var(XString *wsp, char *wp)
 				goto out;
 			break;
 		case PS_IDENT:
-			if (!ksh_isalnux(c)) {
+			if (!ctype(c, C_ALNUX)) {
 				if (c == '[') {
 					char *tmp, *p;
 
@@ -1640,7 +1638,7 @@ get_brace_var(XString *wsp, char *wp)
  next:
 			break;
 		case PS_NUMBER:
-			if (!ksh_isdigit(c))
+			if (!ctype(c, C_DIGIT))
 				goto out;
 			break;
 		case PS_VAR1:

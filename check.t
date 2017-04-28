@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.776 2017/04/17 19:51:44 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.781 2017/04/28 03:28:14 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -30,25 +30,43 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	@(#)MIRBSD KSH R55 2017/04/17
+	@(#)MIRBSD KSH R55 2017/04/27
 description:
 	Check version of shell.
 stdin:
 	echo $KSH_VERSION
 name: KSH_VERSION
-category: !shell:legacy-yes,!shell:textmode-yes
+category: !shell:legacy-yes,!shell:textmode-yes,!shell:ebcdic-yes
 ---
 expected-stdout:
-	@(#)LEGACY KSH R55 2017/04/17
+	@(#)LEGACY KSH R55 2017/04/27
 description:
 	Check version of legacy shell.
 stdin:
 	echo $KSH_VERSION
 name: KSH_VERSION-legacy
-category: !shell:legacy-no,!shell:textmode-yes
+category: !shell:legacy-no,!shell:textmode-yes,!shell:ebcdic-yes
 ---
 expected-stdout:
-	@(#)MIRBSD KSH R55 2017/04/17 +TEXTMODE
+	@(#)MIRBSD KSH R55 2017/04/27 +EBCDIC
+description:
+	Check version of shell.
+stdin:
+	echo $KSH_VERSION
+name: KSH_VERSION-ebcdic
+category: !shell:legacy-yes,!shell:textmode-yes,!shell:ebcdic-no
+---
+expected-stdout:
+	@(#)LEGACY KSH R55 2017/04/27 +EBCDIC
+description:
+	Check version of legacy shell.
+stdin:
+	echo $KSH_VERSION
+name: KSH_VERSION-legacy-ebcdic
+category: !shell:legacy-no,!shell:textmode-yes,!shell:ebcdic-no
+---
+expected-stdout:
+	@(#)MIRBSD KSH R55 2017/04/27 +TEXTMODE
 description:
 	Check version of shell.
 stdin:
@@ -57,7 +75,7 @@ name: KSH_VERSION-textmode
 category: !shell:legacy-yes,!shell:textmode-no
 ---
 expected-stdout:
-	@(#)LEGACY KSH R55 2017/04/17 +TEXTMODE
+	@(#)LEGACY KSH R55 2017/04/27 +TEXTMODE
 description:
 	Check version of legacy shell.
 stdin:
@@ -1355,7 +1373,7 @@ file-setup: file 644 "x"
 	cd -P$1 subdir
 	echo 2=$?,${PWD#$bwd/}
 	cd $bwd
-	chmod 755 renamed
+	chmod 755 noread renamed 2>/dev/null
 	rm -rf noread link renamed
 stdin:
 	export TSHELL="$__progname"
@@ -2364,6 +2382,18 @@ stdin:
 expected-stdout:
 	dir/abc
 	dir/abc
+---
+name: glob-bad-3
+description:
+	Check that the slash is parsed before the glob
+stdin:
+	mkdir a 'a[b'
+	(cd 'a[b'; echo ok >'c]d')
+	echo nok >abd
+	echo fail >a/d
+	cat a[b/c]d
+expected-stdout:
+	ok
 ---
 name: glob-range-1
 description:
@@ -9718,7 +9748,7 @@ stdin:
 	    $'\J\K\L\M\N\O\P\Q\R\S\T\U1\V\W\X\Y\Z\[\\\]\^\_\`\a\b\d\e' \
 	    $'\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u1\v\w\x1\y\z\{\|\}\~ $x' \
 	    $'\u20acd' $'\U20acd' $'\x123' $'fn\x0rd' $'\0234' $'\234' \
-	    $'\2345' $'\ca' $'\c!' $'\c?' $'\c€' $'a\
+	    $'\2345' $'\ca' $'\c!' $'\c?' $'\c…' $'a\
 	b' | {
 		# integer-base-one-3As
 		typeset -Uui16 -Z11 pos=0
@@ -9760,7 +9790,7 @@ expected-stdout:
 	00000050  68 69 6A 6B 6C 6D 0A 6F - 70 71 0D 73 09 01 0B 77  |hijklm.opq.s...w|
 	00000060  01 79 7A 7B 7C 7D 7E 20 - 24 78 0A E2 82 AC 64 0A  |.yz{|}~ $x....d.|
 	00000070  EF BF BD 0A C4 A3 0A 66 - 6E 0A 13 34 0A 9C 0A 9C  |.......fn..4....|
-	00000080  35 0A 01 0A 01 0A 7F 0A - 02 82 AC 0A 61 0A 62 0A  |5...........a.b.|
+	00000080  35 0A 01 0A 01 0A 7F 0A - 82 80 A6 0A 61 0A 62 0A  |5...........a.b.|
 ---
 name: dollar-quotes-in-heredocs-strings
 description:
@@ -11486,19 +11516,19 @@ expected-stdout:
 		echo $(true) $((1+ 2)) ${  :;} ${| REPLY=x;}
 	}
 	inline_COMSUB_EXPRSUB_FUNSUB_VALSUB() {
-		\echo $(\true ) $((1+ 2)) ${ : ;} ${|REPLY=x ;} 
+		\echo $(\true ) $((1+ 2)) ${ \: ;} ${|REPLY=x ;} 
 	} 
 	function comsub_COMSUB_EXPRSUB_FUNSUB_VALSUB { x=$(
 		echo $(true) $((1+ 2)) ${  :;} ${| REPLY=x;}
 	); }
 	function comsub_COMSUB_EXPRSUB_FUNSUB_VALSUB {
-		x=$(\echo $(\true ) $((1+ 2)) ${ : ;} ${|REPLY=x ;} ) 
+		x=$(\echo $(\true ) $((1+ 2)) ${ \: ;} ${|REPLY=x ;} ) 
 	} 
 	function reread_COMSUB_EXPRSUB_FUNSUB_VALSUB { x=$((
 		echo $(true) $((1+ 2)) ${  :;} ${| REPLY=x;}
 	)|tr u x); }
 	function reread_COMSUB_EXPRSUB_FUNSUB_VALSUB {
-		x=$( ( \echo $(\true ) $((1+ 2)) ${ : ;} ${|REPLY=x ;} ) | \tr u x ) 
+		x=$( ( \echo $(\true ) $((1+ 2)) ${ \: ;} ${|REPLY=x ;} ) | \tr u x ) 
 	} 
 	inline_QCHAR_OQUOTE_CQUOTE() {
 		echo fo\ob\"a\`r\'b\$az
