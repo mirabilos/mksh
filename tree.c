@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/tree.c,v 1.89 2017/04/12 16:46:23 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/tree.c,v 1.91 2017/04/28 03:28:19 tg Exp $");
 
 #define INDENT	8
 
@@ -798,13 +798,13 @@ vistree(char *dst, size_t sz, struct op *t)
 	if (--sz == 0 || (c = (unsigned char)(*cp++)) == 0)
 		/* NUL or not enough free space */
 		goto vist_out;
-	if (ISCTRL(c & 0x7F)) {
+	if (ksh_isctrl(c)) {
 		/* C0 or C1 control character or DEL */
 		if (--sz == 0)
 			/* not enough free space for two chars */
 			goto vist_out;
-		*dst++ = (c & 0x80) ? '$' : '^';
-		c = UNCTRL(c & 0x7F);
+		*dst++ = '^';
+		c = ksh_unctrl(c);
 	} else if (UTFMODE && c > 0x7F) {
 		/* better not try to display broken multibyte chars */
 		/* also go easy on the Unicode: no U+FFFD here */
@@ -822,10 +822,10 @@ vistree(char *dst, size_t sz, struct op *t)
 void
 dumpchar(struct shf *shf, int c)
 {
-	if (ISCTRL(c & 0x7F)) {
+	if (ksh_isctrl(c)) {
 		/* C0 or C1 control character or DEL */
-		shf_putc((c & 0x80) ? '$' : '^', shf);
-		c = UNCTRL(c & 0x7F);
+		shf_putc('^', shf);
+		c = ksh_unctrl(c);
 	}
 	shf_putc(c, shf);
 }
@@ -856,8 +856,8 @@ dumpwdvar_i(struct shf *shf, const char *wp, int quotelevel)
 		case QCHAR:
 			shf_puts("QCHAR<", shf);
 			c = *wp++;
-			if (quotelevel == 0 ||
-			    (c == '"' || c == '`' || c == '$' || c == '\\'))
+			if (quotelevel == 0 || c == '"' || c == '\\' ||
+			    ctype(c, C_DOLAR | C_GRAVE))
 				shf_putc('\\', shf);
 			dumpchar(shf, c);
 			goto closeandout;

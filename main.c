@@ -34,7 +34,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.334 2017/04/22 00:07:08 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.341 2017/04/28 01:15:50 tg Exp $");
 
 extern char **environ;
 
@@ -236,6 +236,11 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	ssize_t k;
 #endif
 
+#ifdef MKSH_EBCDIC
+	ebcdic_init();
+#endif
+	set_ifs(TC_IFSWS);
+
 #ifdef __OS2__
 	for (i = 0; i < 3; ++i)
 		if (!isatty(i))
@@ -332,9 +337,6 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	}
 
 	initvar();
-
-	/*XXX do this earlier, just call set_ifs(TC_IFSWS); with the new scheme, then ifs0 need not be E_INIT’d, drop initctypes and setctypes from misc.c/sh.h then */
-	initctypes();
 
 	inittraps();
 
@@ -492,7 +494,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		if (!(s->start = s->str = argv[argi++]))
 			errorf(Tf_optfoo, "", "", 'c', Treq_arg);
 		while (*s->str) {
-			if (*s->str != ' ' && ctype(*s->str, C_QUOTE))
+			if (ctype(*s->str, C_QUOTE))
 				break;
 			s->str++;
 		}
@@ -1549,7 +1551,7 @@ check_fd(const char *name, int mode, const char **emsgp)
 		goto illegal_fd_name;
 	if (name[0] == 'p')
 		return (coproc_getfd(mode, emsgp));
-	if (!ksh_isdigit(name[0])) {
+	if (!ctype(name[0], C_DIGIT)) {
  illegal_fd_name:
 		if (emsgp)
 			*emsgp = "illegal file descriptor name";

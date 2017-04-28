@@ -28,16 +28,16 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.325 2017/04/22 00:07:06 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.333 2017/04/28 03:37:43 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
  * dependencies are problematic, this has not yet been decided on; another
- * good string is "\033c" except on hardware terminals like the DEC VT420
- * which do a full power cycle then...
+ * good string is KSH_ESC_STRING "c" except on hardware terminals like the
+ * DEC VT420 which do a full power cycle then...
  */
 #ifndef MKSH_CLS_STRING
-#define MKSH_CLS_STRING		"\033[;H\033[J"
+#define MKSH_CLS_STRING		KSH_ESC_STRING "[;H" KSH_ESC_STRING "[J"
 #endif
 
 /* tty driver characters we are interested in */
@@ -553,8 +553,7 @@ x_command_glob(int flags, char *toglob, char ***wordsp)
 	return (nwords);
 }
 
-#define IS_WORDC(c)	(!ctype(c, C_LEX1) && (c) != '\'' && (c) != '"' && \
-			    (c) != '`' && (c) != '=' && (c) != ':')
+#define IS_WORDC(c)	(!ctype(c, C_EDNWC))
 
 static int
 x_locate_word(const char *buf, int buflen, int pos, int *startp,
@@ -589,9 +588,9 @@ x_locate_word(const char *buf, int buflen, int pos, int *startp,
 		int p = start - 1;
 
 		/* Figure out if this is a command */
-		while (p >= 0 && ksh_isspace(buf[p]))
+		while (p >= 0 && ctype(buf[p], C_SPACE))
 			p--;
-		iscmd = p < 0 || vstrchr(";|&()`", buf[p]);
+		iscmd = p < 0 || ctype(buf[p], C_EDCMD);
 		if (iscmd) {
 			/*
 			 * If command has a /, path, etc. is not searched;
@@ -650,8 +649,8 @@ x_cf_glob(int *flagsp, const char *buf, int buflen, int pos, int *startp,
 		for (s = toglob; *s; s++) {
 			if (*s == '\\' && s[1])
 				s++;
-			else if (*s == '?' || *s == '*' || *s == '[' ||
-			    *s == '$' ||
+			else if (ctype(*s, C_QUEST | C_DOLAR) ||
+			    *s == '*' || *s == '[' ||
 			    /* ?() *() +() @() !() but two already checked */
 			    (s[1] == '(' /*)*/ &&
 			    (*s == '+' || *s == '@' || *s == '!'))) {
@@ -859,8 +858,7 @@ x_escape(const char *s, size_t len, int (*putbuf_func)(const char *, size_t))
 	int rval = 0;
 
 	while (wlen - add > 0)
-		if (vstrchr("\"#$&'()*:;<=>?[\\`{|}", s[add]) ||
-		    ctype(s[add], C_IFS)) {
+		if (ctype(s[add], C_IFS | C_EDQ)) {
 			if (putbuf_func(s, add) != 0) {
 				rval = -1;
 				break;
@@ -1033,56 +1031,56 @@ static const struct x_ftab x_ftab[] = {
 };
 
 static struct x_defbindings const x_defbindings[] = {
-	{ XFUNC_del_back,		0, CTRL('?')	},
-	{ XFUNC_del_bword,		1, CTRL('?')	},
-	{ XFUNC_eot_del,		0, CTRL('D')	},
-	{ XFUNC_del_back,		0, CTRL('H')	},
-	{ XFUNC_del_bword,		1, CTRL('H')	},
+	{ XFUNC_del_back,		0,  CTRL_QM	},
+	{ XFUNC_del_bword,		1,  CTRL_QM	},
+	{ XFUNC_eot_del,		0,  CTRL_D	},
+	{ XFUNC_del_back,		0,  CTRL_H	},
+	{ XFUNC_del_bword,		1,  CTRL_H	},
 	{ XFUNC_del_bword,		1,	'h'	},
 	{ XFUNC_mv_bword,		1,	'b'	},
 	{ XFUNC_mv_fword,		1,	'f'	},
 	{ XFUNC_del_fword,		1,	'd'	},
-	{ XFUNC_mv_back,		0, CTRL('B')	},
-	{ XFUNC_mv_forw,		0, CTRL('F')	},
-	{ XFUNC_search_char_forw,	0, CTRL(']')	},
-	{ XFUNC_search_char_back,	1, CTRL(']')	},
-	{ XFUNC_newline,		0, CTRL('M')	},
-	{ XFUNC_newline,		0, CTRL('J')	},
-	{ XFUNC_end_of_text,		0, CTRL('_')	},
-	{ XFUNC_abort,			0, CTRL('G')	},
-	{ XFUNC_prev_com,		0, CTRL('P')	},
-	{ XFUNC_next_com,		0, CTRL('N')	},
-	{ XFUNC_nl_next_com,		0, CTRL('O')	},
-	{ XFUNC_search_hist,		0, CTRL('R')	},
+	{ XFUNC_mv_back,		0,  CTRL_B	},
+	{ XFUNC_mv_forw,		0,  CTRL_F	},
+	{ XFUNC_search_char_forw,	0,  CTRL_BC	},
+	{ XFUNC_search_char_back,	1,  CTRL_BC	},
+	{ XFUNC_newline,		0,  CTRL_M	},
+	{ XFUNC_newline,		0,  CTRL_J	},
+	{ XFUNC_end_of_text,		0,  CTRL_US	},
+	{ XFUNC_abort,			0,  CTRL_G	},
+	{ XFUNC_prev_com,		0,  CTRL_P	},
+	{ XFUNC_next_com,		0,  CTRL_N	},
+	{ XFUNC_nl_next_com,		0,  CTRL_O	},
+	{ XFUNC_search_hist,		0,  CTRL_R	},
 	{ XFUNC_beg_hist,		1,	'<'	},
 	{ XFUNC_end_hist,		1,	'>'	},
 	{ XFUNC_goto_hist,		1,	'g'	},
-	{ XFUNC_mv_end,			0, CTRL('E')	},
-	{ XFUNC_mv_beg,			0, CTRL('A')	},
-	{ XFUNC_draw_line,		0, CTRL('L')	},
-	{ XFUNC_cls,			1, CTRL('L')	},
-	{ XFUNC_meta1,			0, CTRL('[')	},
-	{ XFUNC_meta2,			0, CTRL('X')	},
-	{ XFUNC_kill,			0, CTRL('K')	},
-	{ XFUNC_yank,			0, CTRL('Y')	},
+	{ XFUNC_mv_end,			0,  CTRL_E	},
+	{ XFUNC_mv_beg,			0,  CTRL_A	},
+	{ XFUNC_draw_line,		0,  CTRL_L	},
+	{ XFUNC_cls,			1,  CTRL_L	},
+	{ XFUNC_meta1,			0,  CTRL_BO	},
+	{ XFUNC_meta2,			0,  CTRL_X	},
+	{ XFUNC_kill,			0,  CTRL_K	},
+	{ XFUNC_yank,			0,  CTRL_Y	},
 	{ XFUNC_meta_yank,		1,	'y'	},
-	{ XFUNC_literal,		0, CTRL('^')	},
+	{ XFUNC_literal,		0,  CTRL_CA	},
 	{ XFUNC_comment,		1,	'#'	},
-	{ XFUNC_transpose,		0, CTRL('T')	},
-	{ XFUNC_complete,		1, CTRL('[')	},
-	{ XFUNC_comp_list,		0, CTRL('I')	},
+	{ XFUNC_transpose,		0,  CTRL_T	},
+	{ XFUNC_complete,		1,  CTRL_BO	},
+	{ XFUNC_comp_list,		0,  CTRL_I	},
 	{ XFUNC_comp_list,		1,	'='	},
 	{ XFUNC_enumerate,		1,	'?'	},
 	{ XFUNC_expand,			1,	'*'	},
-	{ XFUNC_comp_file,		1, CTRL('X')	},
-	{ XFUNC_comp_comm,		2, CTRL('[')	},
+	{ XFUNC_comp_file,		1,  CTRL_X	},
+	{ XFUNC_comp_comm,		2,  CTRL_BO	},
 	{ XFUNC_list_comm,		2,	'?'	},
-	{ XFUNC_list_file,		2, CTRL('Y')	},
+	{ XFUNC_list_file,		2,  CTRL_Y	},
 	{ XFUNC_set_mark,		1,	' '	},
-	{ XFUNC_kill_region,		0, CTRL('W')	},
-	{ XFUNC_xchg_point_mark,	2, CTRL('X')	},
-	{ XFUNC_literal,		0, CTRL('V')	},
-	{ XFUNC_version,		1, CTRL('V')	},
+	{ XFUNC_kill_region,		0,  CTRL_W	},
+	{ XFUNC_xchg_point_mark,	2,  CTRL_X	},
+	{ XFUNC_literal,		0,  CTRL_V	},
+	{ XFUNC_version,		1,  CTRL_V	},
 	{ XFUNC_prev_histword,		1,	'.'	},
 	{ XFUNC_prev_histword,		1,	'_'	},
 	{ XFUNC_set_arg,		1,	'0'	},
@@ -1145,7 +1143,7 @@ static struct x_defbindings const x_defbindings[] = {
 #endif
 #ifndef MKSH_SMALL
 	/* more non-standard ones */
-	{ XFUNC_eval_region,		1, CTRL('E')	},
+	{ XFUNC_eval_region,		1,  CTRL_E	},
 	{ XFUNC_edit_line,		2,	'e'	}
 #endif
 };
@@ -1315,7 +1313,7 @@ x_insert(int c)
 	if (c == 0) {
  invmbs:
 		left = 0;
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	if (UTFMODE) {
@@ -1377,7 +1375,7 @@ static int
 x_do_ins(const char *cp, size_t len)
 {
 	if (xep + len >= xend) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (-1);
 	}
 	memmove(xcp + len, xcp, xep - xcp + 1);
@@ -1417,7 +1415,7 @@ x_del_back(int c MKSH_A_UNUSED)
 	ssize_t i = 0;
 
 	if (xcp == xbuf) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	do {
@@ -1443,7 +1441,7 @@ x_del_char(int c MKSH_A_UNUSED)
 	}
 
 	if (!i) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	x_delete(i, false);
@@ -1553,15 +1551,15 @@ x_bword(void)
 	char *cp = xcp;
 
 	if (cp == xbuf) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (0);
 	}
 	while (x_arg--) {
-		while (cp != xbuf && is_mfs(cp[-1])) {
+		while (cp != xbuf && ctype(cp[-1], C_MFS)) {
 			cp--;
 			nb++;
 		}
-		while (cp != xbuf && !is_mfs(cp[-1])) {
+		while (cp != xbuf && !ctype(cp[-1], C_MFS)) {
 			cp--;
 			nb++;
 		}
@@ -1577,13 +1575,13 @@ x_fword(bool move)
 	char *cp = xcp;
 
 	if (cp == xep) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (0);
 	}
 	while (x_arg--) {
-		while (cp != xep && is_mfs(*cp))
+		while (cp != xep && ctype(*cp, C_MFS))
 			cp++;
-		while (cp != xep && !is_mfs(*cp))
+		while (cp != xep && !ctype(*cp, C_MFS))
 			cp++;
 	}
 	nc = x_nb2nc(cp - xcp);
@@ -1644,7 +1642,7 @@ x_size2(char *cp, char **dcp)
 	if (c == '\t')
 		/* Kludge, tabs are always four spaces. */
 		return (4);
-	if (ISCTRL(c) && /* but not C1 */ c < 0x80)
+	if (ksh_isctrl(c))
 		/* control unsigned char */
 		return (2);
 	return (1);
@@ -1669,9 +1667,9 @@ x_zotc3(char **cp)
 		/* Kludge, tabs are always four spaces. */
 		x_e_puts(T4spaces);
 		(*cp)++;
-	} else if (ISCTRL(c) && /* but not C1 */ c < 0x80) {
+	} else if (ksh_isctrl(c)) {
 		x_e_putc2('^');
-		x_e_putc2(UNCTRL(c));
+		x_e_putc2(ksh_unctrl(c));
 		(*cp)++;
 	} else
 		x_e_putc3((const char **)cp);
@@ -1681,7 +1679,7 @@ static int
 x_mv_back(int c MKSH_A_UNUSED)
 {
 	if (xcp == xbuf) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	while (x_arg--) {
@@ -1698,7 +1696,7 @@ x_mv_forw(int c MKSH_A_UNUSED)
 	char *cp = xcp, *cp2;
 
 	if (xcp == xep) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	while (x_arg--) {
@@ -1719,13 +1717,13 @@ x_search_char_forw(int c MKSH_A_UNUSED)
 
 	*xep = '\0';
 	if (x_e_getmbc(tmp) < 0) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	while (x_arg--) {
 		if ((cp = (cp == xep) ? NULL : strstr(cp + 1, tmp)) == NULL &&
 		    (cp = strstr(xbuf, tmp)) == NULL) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 	}
@@ -1740,7 +1738,7 @@ x_search_char_back(int c MKSH_A_UNUSED)
 	bool b;
 
 	if (x_e_getmbc(tmp) < 0) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	for (; x_arg--; cp = p)
@@ -1748,7 +1746,7 @@ x_search_char_back(int c MKSH_A_UNUSED)
 			if (p-- == xbuf)
 				p = xep;
 			if (p == cp) {
-				x_e_putc2(7);
+				x_e_putc2(KSH_BEL);
 				return (KSTD);
 			}
 			if ((tmp[1] && ((p+1) > xep)) ||
@@ -1784,7 +1782,7 @@ x_end_of_text(int c MKSH_A_UNUSED)
 	unsigned char tmp[1], *cp = tmp;
 
 	*tmp = isedchar(edchars.eof) ? (unsigned char)edchars.eof :
-	    (unsigned char)CTRL('D');
+	    (unsigned char)CTRL_D;
 	x_zotc3((char **)&cp);
 	x_putc('\r');
 	x_putc('\n');
@@ -1844,7 +1842,7 @@ x_load_hist(char **hp)
 		sp = holdbufp;
 		modified = 0;
 	} else if (hp < history || hp > histptr) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return;
 	}
 	if (sp == NULL)
@@ -1899,13 +1897,13 @@ x_search_hist(int c)
 		if ((c = x_e_getc()) < 0)
 			return (KSTD);
 		f = x_tab[0][c];
-		if (c == CTRL('[')) {
+		if (c == CTRL_BO) {
 			if ((f & 0x7F) == XFUNC_meta1) {
 				if ((c = x_e_getc()) < 0)
 					return (KSTD);
 				f = x_tab[1][c] & 0x7F;
 				if (f == XFUNC_meta1 || f == XFUNC_meta2)
-					x_meta1(CTRL('['));
+					x_meta1(CTRL_BO);
 				x_e_ungetc(c);
 			}
 			break;
@@ -1937,7 +1935,7 @@ x_search_hist(int c)
 			/* add char to pattern */
 			/* overflow check... */
 			if ((size_t)(p - pat) >= sizeof(pat) - 1) {
-				x_e_putc2(7);
+				x_e_putc2(KSH_BEL);
 				continue;
 			}
 			*p++ = c, *p = '\0';
@@ -1983,7 +1981,7 @@ x_search(char *pat, int sameline, int offset)
 			return (i);
 		}
 	}
-	x_e_putc2(7);
+	x_e_putc2(KSH_BEL);
 	x_histp = histptr;
 	return (-1);
 }
@@ -2089,7 +2087,7 @@ x_clrtoeol(int lastch, bool line_was_cleared)
 	int col;
 
 	if (lastch == ' ' && !line_was_cleared && x_term_mode == 1) {
-		shf_puts("\033[K", shl_out);
+		shf_puts(KSH_ESC_STRING "[K", shl_out);
 		line_was_cleared = true;
 	}
 	if (lastch == ' ' && line_was_cleared)
@@ -2163,11 +2161,11 @@ x_transpose(int c MKSH_A_UNUSED)
 	 * to the one they want.
 	 */
 	if (xcp == xbuf) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	} else if (xcp == xep || Flag(FGMACS)) {
 		if (xcp - xbuf == 1) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		/*
@@ -2176,12 +2174,12 @@ x_transpose(int c MKSH_A_UNUSED)
 		 */
 		x_bs3(&xcp);
 		if (utf_mbtowc(&tmpa, xcp) == (size_t)-1) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		x_bs3(&xcp);
 		if (utf_mbtowc(&tmpb, xcp) == (size_t)-1) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		utf_wctomb(xcp, tmpa);
@@ -2194,12 +2192,12 @@ x_transpose(int c MKSH_A_UNUSED)
 		 * cursor, move cursor position along one.
 		 */
 		if (utf_mbtowc(&tmpa, xcp) == (size_t)-1) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		x_bs3(&xcp);
 		if (utf_mbtowc(&tmpb, xcp) == (size_t)-1) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		utf_wctomb(xcp, tmpa);
@@ -2336,7 +2334,7 @@ x_abort(int c MKSH_A_UNUSED)
 static int
 x_error(int c MKSH_A_UNUSED)
 {
-	x_e_putc2(7);
+	x_e_putc2(KSH_BEL);
 	return (KSTD);
 }
 
@@ -2396,19 +2394,18 @@ x_mapin(const char *cp, Area *ap)
 	strdupx(news, cp, ap);
 	op = news;
 	while (*cp) {
-		/* XXX -- should handle \^ escape? */
-		if (*cp == '^') {
+		switch (*cp) {
+		case '^':
 			cp++;
-			/*XXX or ^^ escape? this is ugly. */
-			if (*cp >= '?')
-				/* includes '?'; ASCII */
-				*op++ = CTRL(*cp);
-			else {
-				*op++ = '^';
-				cp--;
-			}
-		} else
+			*op++ = ksh_toctrl(*cp);
+			break;
+		case '\\':
+			if (cp[1] == '\\' || cp[1] == '^')
+				++cp;
+			/* FALLTHROUGH */
+		default:
 			*op++ = *cp;
+		}
 		cp++;
 	}
 	*op = '\0';
@@ -2421,9 +2418,9 @@ x_mapout2(int c, char **buf)
 {
 	char *p = *buf;
 
-	if (ISCTRL(c)) {
+	if (ksh_isctrl(c)) {
 		*p++ = '^';
-		*p++ = UNCTRL(c);
+		*p++ = ksh_unctrl(c);
 	} else
 		*p++ = c;
 	*p = 0;
@@ -2446,9 +2443,9 @@ x_print(int prefix, int key)
 	int f = x_tab[prefix][key];
 
 	if (prefix)
-		/* prefix == 1 || prefix == 2 */
-		shf_puts(x_mapout(prefix == 1 ? CTRL('[') :
-		    prefix == 2 ? CTRL('X') : 0), shl_stdout);
+		/* prefix == 1 || prefix == 2 || prefix == 3 */
+		shf_puts(x_mapout(prefix == 1 ? CTRL_BO :
+		    prefix == 2 ? CTRL_X : 0), shl_stdout);
 #ifdef MKSH_SMALL
 	shprintf("%s = ", x_mapout(key));
 #else
@@ -2612,7 +2609,7 @@ x_kill_region(int c MKSH_A_UNUSED)
 	char *xr;
 
 	if (xmp == NULL) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	if (xmp > xcp) {
@@ -2634,7 +2631,7 @@ x_xchg_point_mark(int c MKSH_A_UNUSED)
 	char *tmp;
 
 	if (xmp == NULL) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	tmp = xmp;
@@ -2712,7 +2709,7 @@ x_expand(int c MKSH_A_UNUSED)
 	    &start, &end, &words);
 
 	if (nwords == 0) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	x_goto(xbuf + start);
@@ -2722,7 +2719,7 @@ x_expand(int c MKSH_A_UNUSED)
 	while (i < nwords) {
 		if (x_escape(words[i], strlen(words[i]), x_do_ins) < 0 ||
 		    (++i < nwords && x_ins(T1space) < 0)) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 	}
@@ -2746,7 +2743,7 @@ do_complete(
 	    &start, &end, &words);
 	/* no match */
 	if (nwords == 0) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return;
 	}
 	if (type == CT_LIST) {
@@ -2903,7 +2900,7 @@ x_e_putc2(int c)
 {
 	int width = 1;
 
-	if (c == '\r' || c == '\n')
+	if (ctype(c, C_CR | C_LF))
 		x_col = 0;
 	if (x_col < xx_cols) {
 		if (UTFMODE && (c > 0x7F)) {
@@ -2922,7 +2919,7 @@ x_e_putc2(int c)
 		} else
 			x_putc(c);
 		switch (c) {
-		case 7:
+		case KSH_BEL:
 			break;
 		case '\r':
 		case '\n':
@@ -2944,7 +2941,7 @@ x_e_putc3(const char **cp)
 {
 	int width = 1, c = **(const unsigned char **)cp;
 
-	if (c == '\r' || c == '\n')
+	if (ctype(c, C_CR | C_LF))
 		x_col = 0;
 	if (x_col < xx_cols) {
 		if (UTFMODE && (c > 0x7F)) {
@@ -2962,7 +2959,7 @@ x_e_putc3(const char **cp)
 			x_putc(c);
 		}
 		switch (c) {
-		case 7:
+		case KSH_BEL:
 			break;
 		case '\r':
 		case '\n':
@@ -3006,7 +3003,7 @@ x_set_arg(int c)
 
 	/* strip command prefix */
 	c &= 255;
-	while (c >= 0 && ksh_isdigit(c)) {
+	while (c >= 0 && ctype(c, C_DIGIT)) {
 		n = n * 10 + ksh_numdig(c);
 		if (n > LINE)
 			/* upper bound for repeat */
@@ -3016,7 +3013,7 @@ x_set_arg(int c)
 	}
 	if (c < 0 || first) {
  x_set_arg_too_big:
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		x_arg = 1;
 		x_arg_defaulted = true;
 	} else {
@@ -3035,7 +3032,7 @@ x_comment(int c MKSH_A_UNUSED)
 	int ret = x_do_comment(xbuf, xend - xbuf, &len);
 
 	if (ret < 0)
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 	else {
 		x_modified();
 		xep = xbuf + len;
@@ -3086,7 +3083,7 @@ x_edit_line(int c MKSH_A_UNUSED)
 {
 	if (x_arg_defaulted) {
 		if (xep == xbuf) {
-			x_e_putc2(7);
+			x_e_putc2(KSH_BEL);
 			return (KSTD);
 		}
 		if (modified) {
@@ -3141,7 +3138,7 @@ x_prev_histword(int c MKSH_A_UNUSED)
 		last_arg = x_arg_defaulted ? -1 : x_arg;
 	xhp = histptr - (m - 1);
 	if ((xhp < history) || !(cp = *xhp)) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		x_modified();
 		return (KSTD);
 	}
@@ -3153,11 +3150,11 @@ x_prev_histword(int c MKSH_A_UNUSED)
 		/*
 		 * ignore white-space after the last word
 		 */
-		while (rcp > cp && is_cfs(*rcp))
+		while (rcp > cp && ctype(*rcp, C_CFS))
 			rcp--;
-		while (rcp > cp && !is_cfs(*rcp))
+		while (rcp > cp && !ctype(*rcp, C_CFS))
 			rcp--;
-		if (is_cfs(*rcp))
+		if (ctype(*rcp, C_CFS))
 			rcp++;
 		x_ins(rcp);
 	} else {
@@ -3168,16 +3165,16 @@ x_prev_histword(int c MKSH_A_UNUSED)
 		/*
 		 * ignore white-space at start of line
 		 */
-		while (*rcp && is_cfs(*rcp))
+		while (*rcp && ctype(*rcp, C_CFS))
 			rcp++;
 		while (x_arg-- > 0) {
-			while (*rcp && !is_cfs(*rcp))
+			while (*rcp && !ctype(*rcp, C_CFS))
 				rcp++;
-			while (*rcp && is_cfs(*rcp))
+			while (*rcp && ctype(*rcp, C_CFS))
 				rcp++;
 		}
 		cp = rcp;
-		while (*rcp && !is_cfs(*rcp))
+		while (*rcp && !ctype(*rcp, C_CFS))
 			rcp++;
 		ch = *rcp;
 		*rcp = '\0';
@@ -3229,14 +3226,14 @@ x_fold_case(int c)
 	char *cp = xcp;
 
 	if (cp == xep) {
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		return (KSTD);
 	}
 	while (x_arg--) {
 		/*
 		 * first skip over any white-space
 		 */
-		while (cp != xep && is_mfs(*cp))
+		while (cp != xep && ctype(*cp, C_MFS))
 			cp++;
 		/*
 		 * do the first char on its own since it may be
@@ -3254,7 +3251,7 @@ x_fold_case(int c)
 		/*
 		 * now for the rest of the word
 		 */
-		while (cp != xep && !is_mfs(*cp)) {
+		while (cp != xep && !ctype(*cp, C_MFS)) {
 			if (c == 'U')
 				/* uppercase */
 				*cp = ksh_toupper(*cp);
@@ -3333,17 +3330,17 @@ x_mode(bool onoff)
 #endif
 
 		if (!edchars.erase)
-			edchars.erase = CTRL('H');
+			edchars.erase = CTRL_H;
 		if (!edchars.kill)
-			edchars.kill = CTRL('U');
+			edchars.kill = CTRL_U;
 		if (!edchars.intr)
-			edchars.intr = CTRL('C');
+			edchars.intr = CTRL_C;
 		if (!edchars.quit)
-			edchars.quit = CTRL('\\');
+			edchars.quit = CTRL_BK;
 		if (!edchars.eof)
-			edchars.eof = CTRL('D');
+			edchars.eof = CTRL_D;
 		if (!edchars.werase)
-			edchars.werase = CTRL('W');
+			edchars.werase = CTRL_W;
 
 		if (isedchar(edchars.erase)) {
 			bind_if_not_bound(0, edchars.erase, XFUNC_del_back);
@@ -3403,11 +3400,10 @@ static void ed_mov_opt(int, char *);
 static int expand_word(int);
 static int complete_word(int, int);
 static int print_expansions(struct edstate *, int);
-#define char_len(c)	((ISCTRL((unsigned char)c) && \
-			/* but not C1 */ (unsigned char)c < 0x80) ? 2 : 1)
 static void vi_error(void);
 static void vi_macro_reset(void);
 static int x_vi_putbuf(const char *, size_t);
+#define char_len(c) (ksh_isctrl(c) ? 2 : 1)
 
 #define vC	0x01		/* a valid command that isn't a vM, vE, vU */
 #define vM	0x02		/* movement command (h, l, etc.) */
@@ -3655,7 +3651,7 @@ vi_hook(int ch)
 		default: ch = 0; goto vi_insert_failed;
 		}
 		if (insert != 0) {
-			if (ch == CTRL('v')) {
+			if (ch == CTRL_V) {
 				state = VLIT;
 				ch = '^';
 			}
@@ -3676,11 +3672,11 @@ vi_hook(int ch)
 				return (1);
 			}
 		} else {
-			if (ch == '\r' || ch == '\n')
+			if (ctype(ch, C_CR | C_LF))
 				return (1);
 			cmdlen = 0;
 			argc1 = 0;
-			if (ksh_isdigit(ch)) {
+			if (ctype(ch, C_DIGIT)) {
 				argc1 = ksh_numdig(ch);
 				state = VARG1;
 			} else {
@@ -3725,7 +3721,7 @@ vi_hook(int ch)
 		break;
 
 	case VARG1:
-		if (ksh_isdigit(ch))
+		if (ctype(ch, C_DIGIT))
 			argc1 = argc1 * 10 + ksh_numdig(ch);
 		else {
 			curcmd[cmdlen++] = ch;
@@ -3735,7 +3731,7 @@ vi_hook(int ch)
 
 	case VEXTCMD:
 		argc2 = 0;
-		if (ksh_isdigit(ch)) {
+		if (ctype(ch, C_DIGIT)) {
 			argc2 = ksh_numdig(ch);
 			state = VARG2;
 			return (0);
@@ -3751,7 +3747,7 @@ vi_hook(int ch)
 		break;
 
 	case VARG2:
-		if (ksh_isdigit(ch))
+		if (ctype(ch, C_DIGIT))
 			argc2 = argc2 * 10 + ksh_numdig(ch);
 		else {
 			if (argc1 == 0)
@@ -3769,7 +3765,7 @@ vi_hook(int ch)
 		break;
 
 	case VXCH:
-		if (ch == CTRL('['))
+		if (ch == CTRL_BO)
 			state = VNORMAL;
 		else {
 			curcmd[cmdlen++] = ch;
@@ -3778,7 +3774,7 @@ vi_hook(int ch)
 		break;
 
 	case VSEARCH:
-		if (ch == '\r' || ch == '\n' /*|| ch == CTRL('[')*/ ) {
+		if (ctype(ch, C_CR | C_LF) /* || ch == CTRL_BO */ ) {
 			restore_cbuf();
 			/* Repeat last search? */
 			if (srchlen == 0) {
@@ -3793,7 +3789,7 @@ vi_hook(int ch)
 				memcpy(srchpat, locpat, srchlen + 1);
 			}
 			state = VCMD;
-		} else if (isched(ch, edchars.erase) || ch == CTRL('h')) {
+		} else if (isched(ch, edchars.erase) || ch == CTRL_H) {
 			if (srchlen != 0) {
 				srchlen--;
 				vs->linelen -= char_len(locpat[srchlen]);
@@ -3834,12 +3830,12 @@ vi_hook(int ch)
 				vi_error();
 			else {
 				locpat[srchlen++] = ch;
-				if (ISCTRL(ch) && /* but not C1 */ ch < 0x80) {
+				if (ksh_isctrl(ch)) {
 					if ((size_t)vs->linelen + 2 >
 					    (size_t)vs->cbufsize)
 						vi_error();
 					vs->cbuf[vs->linelen++] = '^';
-					vs->cbuf[vs->linelen++] = UNCTRL(ch);
+					vs->cbuf[vs->linelen++] = ksh_unctrl(ch);
 				} else {
 					if (vs->linelen >= vs->cbufsize)
 						vi_error();
@@ -3912,8 +3908,8 @@ vi_hook(int ch)
 			break;
 		case 0:
 			if (insert != 0) {
-				if (lastcmd[0] == 's' || lastcmd[0] == 'c' ||
-				    lastcmd[0] == 'C') {
+				if (lastcmd[0] == 's' ||
+				    ksh_eq(lastcmd[0], 'C', 'c')) {
 					if (redo_insert(1) != 0)
 						vi_error();
 				} else {
@@ -3951,7 +3947,7 @@ nextstate(int ch)
 		return (VXCH);
 	else if (ch == '.')
 		return (VREDO);
-	else if (ch == CTRL('v'))
+	else if (ch == CTRL_V)
 		return (VVERSION);
 	else if (is_cmd(ch))
 		return (VCMD);
@@ -3964,7 +3960,7 @@ vi_insert(int ch)
 {
 	int tcursor;
 
-	if (isched(ch, edchars.erase) || ch == CTRL('h')) {
+	if (isched(ch, edchars.erase) || ch == CTRL_H) {
 		if (insert == REPLACE) {
 			if (vs->cursor == undo->cursor) {
 				vi_error();
@@ -4021,7 +4017,7 @@ vi_insert(int ch)
 	 * buffer (if user inserts & deletes char, ibuf gets trashed and
 	 * we don't want to use it)
 	 */
-	if (first_insert && ch != CTRL('['))
+	if (first_insert && ch != CTRL_BO)
 		saved_inslen = 0;
 	switch (ch) {
 	case '\0':
@@ -4031,7 +4027,7 @@ vi_insert(int ch)
 	case '\n':
 		return (1);
 
-	case CTRL('['):
+	case CTRL_BO:
 		expanded = NONE;
 		if (first_insert) {
 			first_insert = false;
@@ -4042,26 +4038,25 @@ vi_insert(int ch)
 			lastcmd[0] = 'a';
 			lastac = 1;
 		}
-		if (lastcmd[0] == 's' || lastcmd[0] == 'c' ||
-		    lastcmd[0] == 'C')
+		if (lastcmd[0] == 's' || ksh_eq(lastcmd[0], 'C', 'c'))
 			return (redo_insert(0));
 		else
 			return (redo_insert(lastac - 1));
 
 	/* { start nonstandard vi commands */
-	case CTRL('x'):
+	case CTRL_X:
 		expand_word(0);
 		break;
 
-	case CTRL('f'):
+	case CTRL_F:
 		complete_word(0, 0);
 		break;
 
-	case CTRL('e'):
+	case CTRL_E:
 		print_expansions(vs, 0);
 		break;
 
-	case CTRL('i'):
+	case CTRL_I:
 		if (Flag(FVITABCOMPLETE)) {
 			complete_word(0, 0);
 			break;
@@ -4116,8 +4111,8 @@ vi_cmd(int argcnt, const char *cmd)
 		}
 		switch (*cmd) {
 
-		case CTRL('l'):
-		case CTRL('r'):
+		case CTRL_L:
+		case CTRL_R:
 			redraw_line(true);
 			break;
 
@@ -4202,12 +4197,11 @@ vi_cmd(int argcnt, const char *cmd)
 			else {
 				if ((ncursor = domove(argcnt, &cmd[1], 1)) < 0)
 					return (-1);
-				if (*cmd == 'c' &&
-				    (cmd[1] == 'w' || cmd[1] == 'W') &&
-				    !ksh_isspace(vs->cbuf[vs->cursor])) {
+				if (*cmd == 'c' && ksh_eq(cmd[1], 'W', 'w') &&
+				    !ctype(vs->cbuf[vs->cursor], C_SPACE)) {
 					do {
 						--ncursor;
-					} while (ksh_isspace(vs->cbuf[ncursor]));
+					} while (ctype(vs->cbuf[ncursor], C_SPACE));
 					ncursor++;
 				}
 				if (ncursor > vs->cursor) {
@@ -4306,7 +4300,7 @@ vi_cmd(int argcnt, const char *cmd)
 
 		case 'j':
 		case '+':
-		case CTRL('n'):
+		case CTRL_N:
 			if (grabhist(modified, hnum + argcnt) < 0)
 				return (-1);
 			else {
@@ -4317,7 +4311,7 @@ vi_cmd(int argcnt, const char *cmd)
 
 		case 'k':
 		case '-':
-		case CTRL('p'):
+		case CTRL_P:
 			if (grabhist(modified, hnum - argcnt) < 0)
 				return (-1);
 			else {
@@ -4470,14 +4464,13 @@ vi_cmd(int argcnt, const char *cmd)
 				if (histnum(-1) < 0)
 					return (-1);
 				p = *histpos();
-#define issp(c)		(ksh_isspace(c) || (c) == '\n')
 				if (argcnt) {
-					while (*p && issp(*p))
+					while (ctype(*p, C_SPACE))
 						p++;
 					while (*p && --argcnt) {
-						while (*p && !issp(*p))
+						while (*p && !ctype(*p, C_SPACE))
 							p++;
-						while (*p && issp(*p))
+						while (ctype(*p, C_SPACE))
 							p++;
 					}
 					if (!*p)
@@ -4487,7 +4480,7 @@ vi_cmd(int argcnt, const char *cmd)
 					sp = p;
 					inspace = false;
 					while (*p) {
-						if (issp(*p))
+						if (ctype(*p, C_SPACE))
 							inspace = true;
 						else if (inspace) {
 							inspace = false;
@@ -4501,7 +4494,7 @@ vi_cmd(int argcnt, const char *cmd)
 				hnum = hlast;
 				if (vs->cursor != vs->linelen)
 					vs->cursor++;
-				while (*p && !issp(*p)) {
+				while (*p && !ctype(*p, C_SPACE)) {
 					argcnt++;
 					p++;
 				}
@@ -4524,11 +4517,11 @@ vi_cmd(int argcnt, const char *cmd)
 					return (-1);
 				for (i = 0; i < argcnt; i++) {
 					p = &vs->cbuf[vs->cursor];
-					if (ksh_islower(*p)) {
+					if (ctype(*p, C_LOWER)) {
 						modified = 1;
 						hnum = hlast;
 						*p = ksh_toupper(*p);
-					} else if (ksh_isupper(*p)) {
+					} else if (ctype(*p, C_UPPER)) {
 						modified = 1;
 						hnum = hlast;
 						*p = ksh_tolower(*p);
@@ -4551,27 +4544,27 @@ vi_cmd(int argcnt, const char *cmd)
 		/* AT&T ksh */
 		case '=':
 		/* Nonstandard vi/ksh */
-		case CTRL('e'):
+		case CTRL_E:
 			print_expansions(vs, 1);
 			break;
 
 
 		/* Nonstandard vi/ksh */
-		case CTRL('i'):
+		case CTRL_I:
 			if (!Flag(FVITABCOMPLETE))
 				return (-1);
 			complete_word(1, argcnt);
 			break;
 
 		/* some annoying AT&T kshs */
-		case CTRL('['):
+		case CTRL_BO:
 			if (!Flag(FVIESCCOMPLETE))
 				return (-1);
 			/* FALLTHROUGH */
 		/* AT&T ksh */
 		case '\\':
 		/* Nonstandard vi/ksh */
-		case CTRL('f'):
+		case CTRL_F:
 			complete_word(1, argcnt);
 			break;
 
@@ -4579,7 +4572,7 @@ vi_cmd(int argcnt, const char *cmd)
 		/* AT&T ksh */
 		case '*':
 		/* Nonstandard vi/ksh */
-		case CTRL('x'):
+		case CTRL_X:
 			expand_word(1);
 			break;
 
@@ -4645,7 +4638,7 @@ domove(int argcnt, const char *cmd, int sub)
 	case ';':
 		if (fsavecmd == ' ')
 			return (-1);
-		i = fsavecmd == 'f' || fsavecmd == 'F';
+		i = ksh_eq(fsavecmd, 'F', 'f');
 		t = fsavecmd > 'a';
 		if (*cmd == ',')
 			t = !t;
@@ -4657,7 +4650,7 @@ domove(int argcnt, const char *cmd, int sub)
 		break;
 
 	case 'h':
-	case CTRL('h'):
+	case CTRL_H:
 		if (!sub && vs->cursor == 0)
 			return (-1);
 		ncursor = vs->cursor - argcnt;
@@ -4695,7 +4688,7 @@ domove(int argcnt, const char *cmd, int sub)
 	case '^':
 		ncursor = 0;
 		while (ncursor < vs->linelen - 1 &&
-		    ksh_isspace(vs->cbuf[ncursor]))
+		    ctype(vs->cbuf[ncursor], C_SPACE))
 			ncursor++;
 		break;
 
@@ -4921,17 +4914,16 @@ forwword(int argcnt)
 
 	ncursor = vs->cursor;
 	while (ncursor < vs->linelen && argcnt--) {
-		if (ksh_isalnux(vs->cbuf[ncursor]))
+		if (ctype(vs->cbuf[ncursor], C_ALNUX))
 			while (ncursor < vs->linelen &&
-			    ksh_isalnux(vs->cbuf[ncursor]))
+			    ctype(vs->cbuf[ncursor], C_ALNUX))
 				ncursor++;
-		else if (!ksh_isspace(vs->cbuf[ncursor]))
+		else if (!ctype(vs->cbuf[ncursor], C_SPACE))
 			while (ncursor < vs->linelen &&
-			    !ksh_isalnux(vs->cbuf[ncursor]) &&
-			    !ksh_isspace(vs->cbuf[ncursor]))
+			    !ctype(vs->cbuf[ncursor], C_ALNUX | C_SPACE))
 				ncursor++;
 		while (ncursor < vs->linelen &&
-		    ksh_isspace(vs->cbuf[ncursor]))
+		    ctype(vs->cbuf[ncursor], C_SPACE))
 			ncursor++;
 	}
 	return (ncursor);
@@ -4944,17 +4936,16 @@ backword(int argcnt)
 
 	ncursor = vs->cursor;
 	while (ncursor > 0 && argcnt--) {
-		while (--ncursor > 0 && ksh_isspace(vs->cbuf[ncursor]))
+		while (--ncursor > 0 && ctype(vs->cbuf[ncursor], C_SPACE))
 			;
 		if (ncursor > 0) {
-			if (ksh_isalnux(vs->cbuf[ncursor]))
+			if (ctype(vs->cbuf[ncursor], C_ALNUX))
 				while (--ncursor >= 0 &&
-				    ksh_isalnux(vs->cbuf[ncursor]))
+				    ctype(vs->cbuf[ncursor], C_ALNUX))
 					;
 			else
 				while (--ncursor >= 0 &&
-				    !ksh_isalnux(vs->cbuf[ncursor]) &&
-				    !ksh_isspace(vs->cbuf[ncursor]))
+				    !ctype(vs->cbuf[ncursor], C_ALNUX | C_SPACE))
 					;
 			ncursor++;
 		}
@@ -4970,17 +4961,16 @@ endword(int argcnt)
 	ncursor = vs->cursor;
 	while (ncursor < vs->linelen && argcnt--) {
 		while (++ncursor < vs->linelen - 1 &&
-		    ksh_isspace(vs->cbuf[ncursor]))
+		    ctype(vs->cbuf[ncursor], C_SPACE))
 			;
 		if (ncursor < vs->linelen - 1) {
-			if (ksh_isalnux(vs->cbuf[ncursor]))
+			if (ctype(vs->cbuf[ncursor], C_ALNUX))
 				while (++ncursor < vs->linelen &&
-				    ksh_isalnux(vs->cbuf[ncursor]))
+				    ctype(vs->cbuf[ncursor], C_ALNUX))
 					;
 			else
 				while (++ncursor < vs->linelen &&
-				    !ksh_isalnux(vs->cbuf[ncursor]) &&
-				    !ksh_isspace(vs->cbuf[ncursor]))
+				    !ctype(vs->cbuf[ncursor], C_ALNUX | C_SPACE))
 					;
 			ncursor--;
 		}
@@ -4996,10 +4986,10 @@ Forwword(int argcnt)
 	ncursor = vs->cursor;
 	while (ncursor < vs->linelen && argcnt--) {
 		while (ncursor < vs->linelen &&
-		    !ksh_isspace(vs->cbuf[ncursor]))
+		    !ctype(vs->cbuf[ncursor], C_SPACE))
 			ncursor++;
 		while (ncursor < vs->linelen &&
-		    ksh_isspace(vs->cbuf[ncursor]))
+		    ctype(vs->cbuf[ncursor], C_SPACE))
 			ncursor++;
 	}
 	return (ncursor);
@@ -5012,9 +5002,9 @@ Backword(int argcnt)
 
 	ncursor = vs->cursor;
 	while (ncursor > 0 && argcnt--) {
-		while (--ncursor >= 0 && ksh_isspace(vs->cbuf[ncursor]))
+		while (--ncursor >= 0 && ctype(vs->cbuf[ncursor], C_SPACE))
 			;
-		while (ncursor >= 0 && !ksh_isspace(vs->cbuf[ncursor]))
+		while (ncursor >= 0 && !ctype(vs->cbuf[ncursor], C_SPACE))
 			ncursor--;
 		ncursor++;
 	}
@@ -5029,11 +5019,11 @@ Endword(int argcnt)
 	ncursor = vs->cursor;
 	while (ncursor < vs->linelen - 1 && argcnt--) {
 		while (++ncursor < vs->linelen - 1 &&
-		    ksh_isspace(vs->cbuf[ncursor]))
+		    ctype(vs->cbuf[ncursor], C_SPACE))
 			;
 		if (ncursor < vs->linelen - 1) {
 			while (++ncursor < vs->linelen &&
-			    !ksh_isspace(vs->cbuf[ncursor]))
+			    !ctype(vs->cbuf[ncursor], C_SPACE))
 				;
 			ncursor--;
 		}
@@ -5196,10 +5186,10 @@ display(char *wb1, char *wb2, int leftside)
 				*twb1++ = ' ';
 			} while (++col < winwidth && (col & 7) != 0);
 		else if (col < winwidth) {
-			if (ISCTRL(ch) && /* but not C1 */ ch < 0x80) {
+			if (ksh_isctrl(ch)) {
 				*twb1++ = '^';
 				if (++col < winwidth) {
-					*twb1++ = UNCTRL(ch);
+					*twb1++ = ksh_unctrl(ch);
 					col++;
 				}
 			} else {
@@ -5475,9 +5465,9 @@ print_expansions(struct edstate *est, int cmd MKSH_A_UNUSED)
 static void
 x_vi_zotc(int c)
 {
-	if (ISCTRL(c)) {
+	if (ksh_isctrl(c)) {
 		x_putc('^');
-		c = UNCTRL(c);
+		c = ksh_unctrl(c);
 	}
 	x_putc(c);
 }
@@ -5488,7 +5478,7 @@ vi_error(void)
 {
 	/* Beem out of any macros as soon as an error occurs */
 	vi_macro_reset();
-	x_putc(7);
+	x_putc(KSH_BEL);
 	x_flush();
 }
 
@@ -5613,7 +5603,7 @@ x_eval_region(int c MKSH_A_UNUSED)
 	if (cp == NULL) {
 		/* command cannot be parsed */
  x_eval_region_err:
-		x_e_putc2(7);
+		x_e_putc2(KSH_BEL);
 		x_redraw('\r');
 		return (KSTD);
 	}

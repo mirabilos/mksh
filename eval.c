@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.203 2017/04/22 00:07:08 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.207 2017/04/28 00:38:29 tg Exp $");
 
 /*
  * string expansion
@@ -507,7 +507,7 @@ expand(
 						sp += (d ? d : p) - s - 1;
 						if (!(stype & 0x180) &&
 						    s[0] == CHAR &&
-						    (s[1] == '#' || s[1] == '%'))
+						    ctype(s[1], C_SUB2))
 							fpat = s[1];
 						wpat = s + (fpat ? 2 : 0);
 						wrep = d ? p : NULL;
@@ -891,10 +891,7 @@ expand(
 				--newlines;
 			} else {
 				while ((c = shf_getc(x.u.shf)) == 0 ||
-#ifdef MKSH_WITH_TEXTMODE
-				       c == '\r' ||
-#endif
-				       c == '\n') {
+				    ctype(c, C_NL)) {
 #ifdef MKSH_WITH_TEXTMODE
 					if (c == '\r') {
 						c = shf_getc(x.u.shf);
@@ -1131,7 +1128,7 @@ varsub(Expand *xp, const char *sp, const char *word,
 	c = sp[1];
 	if (stype == '%' && c == '\0')
 		return (-1);
-	if ((stype == '#' || stype == '%') && c != '\0') {
+	if (ctype(stype, C_SUB2) && c != '\0') {
 		/* Can't have any modifiers for ${#...} or ${%...} */
 		if (*word != CSUBST)
 			return (-1);
@@ -1224,10 +1221,10 @@ varsub(Expand *xp, const char *sp, const char *word,
 		}
 	} else if (stype == 0x80 && (c == ' ' || c == '0')) {
 		stype |= '0';
-	} else if (ctype(c, C_SUBOP1)) {
+	} else if (ctype(c, C_SUB1)) {
 		slen += 2;
 		stype |= c;
-	} else if (ksh_issubop2(c)) {
+	} else if (ctype(c, C_SUB2)) {
 		/* Note: ksh88 allows :%, :%%, etc */
 		slen += 2;
 		stype = c;
@@ -1335,17 +1332,17 @@ varsub(Expand *xp, const char *sp, const char *word,
 
 	c = stype & 0x7F;
 	/* test the compiler's code generator */
-	if (((stype < 0x100) && (ksh_issubop2(c) ||
+	if (((stype < 0x100) && (ctype(c, C_SUB2) ||
 	    (((stype & 0x80) ? *xp->str == '\0' : xp->str == null) &&
 	    (state != XARG || (ifs0 || xp->split ?
 	    (xp->u.strv[0] == NULL) : !hasnonempty(xp->u.strv))) ?
-	    c == '=' || c == '-' || c == '?' : c == '+'))) ||
+	    ctype(c, C_EQUAL | C_MINUS | C_QUEST) : c == '+'))) ||
 	    stype == (0x80 | '0') || stype == (0x100 | '#') ||
 	    stype == (0x100 | 'Q') || (stype & 0x7F) == '/')
 		/* expand word instead of variable value */
 		state = XBASE;
 	if (Flag(FNOUNSET) && xp->str == null && !zero_ok &&
-	    (ksh_issubop2(c) || (state != XBASE && c != '+')))
+	    (ctype(c, C_SUB2) || (state != XBASE && c != '+')))
 		errorf(Tf_parm, sp);
 	*stypep = stype;
 	*slenp = slen;
@@ -1728,7 +1725,7 @@ debunk(char *dp, const char *sp, size_t dlen)
 		memmove(dp, sp, s - sp);
 		for (d = dp + (s - sp); *s && (d - dp < (ssize_t)dlen); s++)
 			if (!ISMAGIC(*s) || !(*++s & 0x80) ||
-			    !vstrchr("*+?@! ", *s & 0x7f))
+			    !ctype(*s & 0x7F, C_PATMO | C_SPC))
 				*d++ = *s;
 			else {
 				/* extended pattern operators: *+?@! */
