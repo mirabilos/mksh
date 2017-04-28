@@ -175,7 +175,7 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.827 2017/04/28 03:51:13 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.831 2017/04/28 12:02:41 tg Exp $");
 #endif
 #define MKSH_VERSION "R55 2017/04/27"
 
@@ -802,8 +802,8 @@ enum sh_flag {
 struct sretrace_info;
 struct yyrecursive_state;
 
-EXTERN struct sretrace_info *retrace_info E_INIT(NULL);
-EXTERN int subshell_nesting_type E_INIT(0);
+EXTERN struct sretrace_info *retrace_info;
+EXTERN int subshell_nesting_type;
 
 extern struct env {
 	ALLOC_ITEM alloc_INT;	/* internal, do not touch */
@@ -1326,7 +1326,7 @@ enum tmout_enum {
 	TMOUT_LEAVING		/* have timed out */
 };
 EXTERN unsigned int ksh_tmout;
-EXTERN enum tmout_enum ksh_tmout_state E_INIT(TMOUT_EXECUTING);
+EXTERN enum tmout_enum ksh_tmout_state;
 
 /* For "You have stopped jobs" message */
 EXTERN bool really_exit;
@@ -1391,6 +1391,8 @@ EXTERN char ifs0;
 #define C_ALPHA	(CiLOWER | CiUPPER)
 /* A‥Z_a‥z		alphabetical plus underscore (identifier lead) */
 #define C_ALPHX	(CiLOWER | CiUNDER | CiUPPER)
+/* \x01‥\x7F		7-bit ASCII except NUL */
+#define C_ASCII (CiALIAS | CiANGLE | CiBRACK | CiCNTRL | CiCOLON | CiCR | CiCURLY | CiDIGIT | CiEQUAL | CiGRAVE | CiHASH | CiLOWER | CiMINUS | CiNL | CiOCTAL | CiPERCT | CiPLUS | CiQC | CiQCL | CiQCM | CiQCX | CiQUEST | CiSP | CiSPX | CiSS | CiTAB | CiUNDER | CiUPPER)
 /* \x09\x20		tab and space */
 #define C_BLANK	(CiSP | CiTAB)
 /* \x09\x20"'		separator for completion */
@@ -1467,7 +1469,7 @@ EXTERN char ifs0;
 
 /* identity transform of octet */
 #define ord(c)		((unsigned int)(unsigned char)(c))
-#ifdef MKSH_EBCDIC
+#if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
 EXTERN unsigned short ebcdic_map[256];
 EXTERN unsigned char ebcdic_rtt_toascii[256];
 EXTERN unsigned char ebcdic_rtt_fromascii[256];
@@ -1477,19 +1479,22 @@ extern void ebcdic_init(void);
 /* two-way round-trip conversion, for general use */
 #define rtt2asc(c)	ebcdic_rtt_toascii[(unsigned char)(c)]
 #define asc2rtt(c)	ebcdic_rtt_fromascii[(unsigned char)(c)]
-/* control character foo */
-#define ksh_isctrl(c)	(ord(c) < 0x40 || ord(c) == 0xFF)
 /* case-independent char comparison */
 #define ksh_eq(c,u,l)	(ord(c) == ord(u) || ord(c) == ord(l))
 #else
 #define asciibetical(c)	ord(c)
 #define rtt2asc(c)	((unsigned char)(c))
 #define asc2rtt(c)	((unsigned char)(c))
-#define ksh_isctrl(c)	(((c) & 0x7F) < 0x20 || (c) == 0x7F)
 #define ksh_eq(c,u,l)	((ord(c) | 0x20) == ord(l))
 #endif
+/* control character foo */
+#ifdef MKSH_EBCDIC
+#define ksh_isctrl(c)	(ord(c) < 0x40 || ord(c) == 0xFF)
+#else
+#define ksh_isctrl(c)	((ord(c) & 0x7F) < 0x20 || (c) == 0x7F)
+#endif
 /* new fast character classes */
-#define ctype(c,t)	tobool(ksh_ctypes[rtt2asc(c)] & (t))
+#define ctype(c,t)	tobool(ksh_ctypes[ord(c)] & (t))
 /* helper functions */
 #define ksh_isdash(s)	tobool(ord((s)[0]) == '-' && ord((s)[1]) == '\0')
 /* invariant distance even in EBCDIC */
