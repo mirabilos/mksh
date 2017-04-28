@@ -25,7 +25,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.89 2017/04/28 04:13:19 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.92 2017/04/28 11:31:53 tg Exp $");
 
 /* flags to shf_emptybuf() */
 #define EB_READSW	0x01	/* about to switch to reading */
@@ -1209,15 +1209,24 @@ const uint32_t tpl_ctypes[128] = {
 void
 set_ifs(const char *s)
 {
-	ifs0 = *s;
+#if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
+	int i = 256;
+
+	memset(ksh_ctypes, 0, sizeof(ksh_ctypes));
+	while (i--)
+		if (ebcdic_map[i] < 0x80U)
+			ksh_ctypes[i] = tpl_ctypes[ebcdic_map[i]];
+#else
 	memcpy(ksh_ctypes, tpl_ctypes, sizeof(tpl_ctypes));
 	memset((char *)ksh_ctypes + sizeof(tpl_ctypes), '\0',
 	    sizeof(ksh_ctypes) - sizeof(tpl_ctypes));
+#endif
+	ifs0 = *s;
 	while (*s)
-		ksh_ctypes[rtt2asc(*s++)] |= CiIFS;
+		ksh_ctypes[ord(*s++)] |= CiIFS;
 }
 
-#ifdef MKSH_EBCDIC
+#if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
 #include <locale.h>
 
 void
@@ -1225,19 +1234,25 @@ ebcdic_init(void)
 {
 	int i = 256;
 	unsigned char t;
+	bool mapcache[128];
 
 	while (i--)
 		ebcdic_rtt_toascii[i] = i;
+	memset(ebcdic_rtt_fromascii, 0xFF, sizeof(ebcdic_rtt_fromascii));
 	setlocale(LC_ALL, "");
+#ifdef MKSH_EBCDIC
 	if (__etoa_l(ebcdic_rtt_toascii, 256) != 256) {
 		write(2, "mksh: could not map EBCDIC to ASCII\n", 36);
 		exit(255);
 	}
+#endif
 
-	i = 0;
-	do {
+	memset(mapcache, 0, sizeof(mapcache));
+	i = 256;
+	while (i--) {
+		t = ebcdic_rtt_toascii[i];
 		/* fill the complete round-trip map */
-		ebcdic_rtt_fromascii[ebcdic_rtt_toascii[i]] = i;
+		ebcdic_rtt_fromascii[t] = i;
 		/*
 		 * Only use the converted value if it's in the range
 		 * [0x00; 0x7F], which I checked; the "extended ASCII"
@@ -1249,10 +1264,15 @@ ebcdic_init(void)
 		 * an unsigned int, and or the raw unconverted EBCDIC
 		 * values with 0x01000000 instead.
 		 */
-		if ((t = ebcdic_rtt_toascii[i]) < 0x80U)
+		if (t < 0x80U) {
+			if (mapcache[t]) {
+				write(2, "mksh: duplicate EBCDIC to ASCII mapping\n", 40);
+				exit(255);
+			}
+			mapcache[t] = true;
 			ebcdic_map[i] = (unsigned short)ord(t);
-		else
+		} else
 			ebcdic_map[i] = (unsigned short)(0x100U | ord(i));
-	} while (++i < 256);
+	}
 }
 #endif
