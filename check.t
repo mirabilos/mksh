@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.782 2017/04/28 11:13:45 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.786 2017/04/29 21:49:04 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright Â© 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -1355,7 +1355,7 @@ need-pass: no
 # the mv command fails on Cygwin
 # Hurd aborts the testsuite (permission denied)
 # QNX does not find subdir to cd into
-category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!os:os390,!nosymlink
+category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!nosymlink
 file-setup: file 644 "x"
 	mkdir noread noread/target noread/target/subdir
 	ln -s noread link
@@ -1962,15 +1962,11 @@ expected-stdout:
 name: eglob-bad-1
 description:
 	Check that globbing isn't done when glob has syntax error
-file-setup: file 644 "abcx"
-file-setup: file 644 "abcz"
-file-setup: file 644 "bbc"
+file-setup: file 644 "@(a[b|)c]foo"
 stdin:
-	echo !([*)*
-	echo +(a|b[)*
+	echo @(a[b|)c]*
 expected-stdout:
-	!([*)*
-	+(a|b[)*
+	@(a[b|)c]*
 ---
 name: eglob-bad-2
 description:
@@ -2057,9 +2053,11 @@ stdin:
 	case foo in *(a|b[)) echo yes;; *) echo no;; esac
 	case foo in *(a|b[)|f*) echo yes;; *) echo no;; esac
 	case '*(a|b[)' in *(a|b[)) echo yes;; *) echo no;; esac
+	case 'aab[b[ab[a' in *(a|b[)) echo yes;; *) echo no;; esac
 expected-stdout:
 	no
 	yes
+	no
 	yes
 ---
 name: eglob-trim-1
@@ -2354,7 +2352,7 @@ expected-stdout:
 ---
 name: glob-bad-1
 description:
-	Check that globbing isn't done when glob has syntax error
+	Check that [ matches itself if it's not a valid bracket expr
 file-setup: dir 755 "[x"
 file-setup: file 644 "[x/foo"
 stdin:
@@ -2362,8 +2360,8 @@ stdin:
 	echo *[x
 	echo [x/*
 expected-stdout:
-	[*
-	*[x
+	[x
+	[x
 	[x/foo
 ---
 name: glob-bad-2
@@ -2403,24 +2401,31 @@ file-setup: file 644 "abc"
 file-setup: file 644 "bbc"
 file-setup: file 644 "cbc"
 file-setup: file 644 "-bc"
+file-setup: file 644 "!bc"
+file-setup: file 644 "^bc"
+file-setup: file 644 "+bc"
+file-setup: file 644 ",bc"
+file-setup: file 644 "0bc"
+file-setup: file 644 "1bc"
 stdin:
 	echo [ab-]*
 	echo [-ab]*
 	echo [!-ab]*
 	echo [!ab]*
 	echo []ab]*
-	:>'./!bc'
-	:>'./^bc'
 	echo [^ab]*
-	echo [!ab]*
+	echo [+--]*
+	echo [--1]*
+
 expected-stdout:
 	-bc abc bbc
 	-bc abc bbc
-	cbc
-	-bc cbc
+	!bc +bc ,bc 0bc 1bc ^bc cbc
+	!bc +bc ,bc -bc 0bc 1bc ^bc cbc
 	abc bbc
 	^bc abc bbc
-	!bc -bc ^bc cbc
+	+bc ,bc -bc
+	-bc 0bc 1bc
 ---
 name: glob-range-2
 description:
@@ -2438,7 +2443,7 @@ description:
 # breaks on Mac OSX (HFS+ non-standard Unicode canonical decomposition)
 # breaks on Cygwin 1.7 (files are now UTF-16 or something)
 # breaks on QNX 6.4.1 (says RT)
-category: !os:cygwin,!os:darwin,!os:msys,!os:nto,!os:os2
+category: !os:cygwin,!os:darwin,!os:msys,!os:nto,!os:os2,!os:os390
 need-pass: no
 file-setup: file 644 "aÂc"
 stdin:
@@ -8340,11 +8345,10 @@ expected-stdout:
 expected-stderr-pattern:
 	/(Unrecognized character .... ignored at \..t4 line 1)*/
 ---
-name: utf8opt-1a
+name: utf8opt-1
 description:
 	Check that the utf8-mode flag is not set at non-interactive startup
-category: !os:hpux
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.UTF-8!
+env-setup: !PS1=!PS2=!LC_CTYPE=@utflocale@!
 stdin:
 	if [[ $- = *U* ]]; then
 		echo is set
@@ -8354,51 +8358,15 @@ stdin:
 expected-stdout:
 	is not set
 ---
-name: utf8opt-1b
-description:
-	Check that the utf8-mode flag is not set at non-interactive startup
-category: os:hpux
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.utf8!
-stdin:
-	if [[ $- = *U* ]]; then
-		echo is set
-	else
-		echo is not set
-	fi
-expected-stdout:
-	is not set
----
-name: utf8opt-2a
+name: utf8opt-2
 description:
 	Check that the utf8-mode flag is set at interactive startup.
-	-DMKSH_ASSUME_UTF8=0 => expected failure, please ignore
-	-DMKSH_ASSUME_UTF8=1 => not expected, please investigate
-	-UMKSH_ASSUME_UTF8 => not expected, but if your OS is old,
-	 try passing HAVE_SETLOCALE_CTYPE=0 to Build.sh
+	If your OS is old, try passing HAVE_SETLOCALE_CTYPE=0 to Build.sh
 need-pass: no
-category: !os:hpux,!os:msys,!os:os2
+category: !noutf8
 need-ctty: yes
 arguments: !-i!
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.UTF-8!
-stdin:
-	if [[ $- = *U* ]]; then
-		echo is set
-	else
-		echo is not set
-	fi
-expected-stdout:
-	is set
-expected-stderr-pattern:
-	/(# )*/
----
-name: utf8opt-2b
-description:
-	Check that the utf8-mode flag is set at interactive startup
-	Expected failure if -DMKSH_ASSUME_UTF8=0
-category: os:hpux
-need-ctty: yes
-arguments: !-i!
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.utf8!
+env-setup: !PS1=!PS2=!LC_CTYPE=@utflocale@!
 stdin:
 	if [[ $- = *U* ]]; then
 		echo is set
