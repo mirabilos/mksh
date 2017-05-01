@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.719 2017/04/29 14:36:12 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.721 2017/05/01 20:03:25 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017
@@ -928,6 +928,7 @@ OS/390)
 	add_cppflags -DMKSH_ASSUME_UTF8=0
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
+	: "${CC=xlc}"
 	: "${SIZE=: size}"
 	add_cppflags -DMKSH_FOR_Z_OS
 	add_cppflags -D_ALL_SOURCE
@@ -1088,7 +1089,7 @@ $e $bi$me: Scanning for functions... please ignore any errors.$ao
 # - LLVM+clang defines __GNUC__ too
 # - nwcc defines __GNUC__ too
 CPP="$CC -E"
-$e ... which compiler seems to be used
+$e ... which compiler type seems to be used
 cat >conftest.c <<'EOF'
 const char *
 #if defined(__ICC) || defined(__INTEL_COMPILER)
@@ -1338,7 +1339,7 @@ unknown)
 	# huh?
 	;;
 esac
-$e "$bi==> which compiler seems to be used...$ao $ui$ct$etd$ao"
+$e "$bi==> which compiler type seems to be used...$ao $ui$ct$etd$ao"
 rmf conftest.c conftest.o conftest a.out* a.exe* conftest.exe* vv.out
 
 #
@@ -2433,8 +2434,8 @@ cat >test.sh <<-EOF
 	set -A check_categories -- $check_categories
 	pflag='$curdir/$mkshexe'
 	sflag='$srcdir/check.t'
-	usee=0 Pflag=0 Sflag=0 uset=0 vflag=1 xflag=0
-	while getopts "C:e:fPp:QSs:t:v" ch; do case \$ch {
+	usee=0 useU=0 Pflag=0 Sflag=0 uset=0 vflag=1 xflag=0
+	while getopts "C:e:fPp:QSs:t:U:v" ch; do case \$ch {
 	(C)	check_categories[\${#check_categories[*]}]=\$OPTARG ;;
 	(e)	usee=1; eflag=\$OPTARG ;;
 	(f)	check_categories[\${#check_categories[*]}]=fastbox ;;
@@ -2447,6 +2448,7 @@ cat >test.sh <<-EOF
 	(+S)	Sflag=0 ;;
 	(s)	sflag=\$OPTARG ;;
 	(t)	uset=1; tflag=\$OPTARG ;;
+	(U)	useU=1; Uflag=\$OPTARG ;;
 	(v)	vflag=1 ;;
 	(+v)	vflag=0 ;;
 	(*)	xflag=1 ;;
@@ -2470,6 +2472,10 @@ cat >test.sh <<-EOF
 	if (( uset )); then
 		args[\${#args[*]}]=-t
 		args[\${#args[*]}]=\$tflag
+	fi
+	if (( useU )); then
+		args[\${#args[*]}]=-U
+		args[\${#args[*]}]=\$Uflag
 	fi
 	(( vflag )) && args[\${#args[*]}]=-v
 	(( xflag )) && args[\${#args[*]}]=-x	# force usage by synerr
