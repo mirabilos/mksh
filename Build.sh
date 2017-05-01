@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.718 2017/04/28 02:24:53 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.721 2017/05/01 20:03:25 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017
@@ -787,7 +787,9 @@ GNU/kFreeBSD)
 	add_cppflags -DSETUID_CAN_FAIL_WITH_EAGAIN
 	;;
 Haiku)
-	add_cppflags -DMKSH_ASSUME_UTF8; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
 	;;
 Harvey)
 	add_cppflags -D_POSIX_SOURCE
@@ -795,7 +797,9 @@ Harvey)
 	add_cppflags -D_BSD_EXTENSION
 	add_cppflags -D_SUSV2_SOURCE
 	add_cppflags -D_GNU_SOURCE
-	add_cppflags -DMKSH_ASSUME_UTF8; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
 	add_cppflags -DMKSH_NO_CMDLINE_EDITING
 	add_cppflags -DMKSH__NO_SETEUGID
 	oswarn=' and will currently not work'
@@ -848,7 +852,9 @@ Minix3)
 MirBSD)
 	;;
 MSYS_*)
-	add_cppflags -DMKSH_ASSUME_UTF8=0; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8=0
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
 	# almost same as CYGWIN* (from RT|Chatzilla)
 	: "${HAVE_SETLOCALE_CTYPE=0}"
 	# broken on this OE (from ir0nh34d)
@@ -882,7 +888,9 @@ OpenBSD)
 	: "${HAVE_SETLOCALE_CTYPE=0}"
 	;;
 OS/2)
-	add_cppflags -DMKSH_ASSUME_UTF8=0; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8=0
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
 	HAVE_TERMIOS_H=0
 	HAVE_MKNOD=0	# setmode() incompatible
 	oswarn="; it is being ported"
@@ -917,7 +925,10 @@ the mksh-os2 porter.
 "
 	;;
 OS/390)
-	add_cppflags -DMKSH_ASSUME_UTF8=0; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8=0
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
+	: "${CC=xlc}"
 	: "${SIZE=: size}"
 	add_cppflags -DMKSH_FOR_Z_OS
 	add_cppflags -D_ALL_SOURCE
@@ -936,7 +947,9 @@ Plan9)
 	add_cppflags -D_LIMITS_EXTENSION
 	add_cppflags -D_BSD_EXTENSION
 	add_cppflags -D_SUSV2_SOURCE
-	add_cppflags -DMKSH_ASSUME_UTF8; HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	add_cppflags -DMKSH_ASSUME_UTF8
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
 	add_cppflags -DMKSH_NO_CMDLINE_EDITING
 	add_cppflags -DMKSH__NO_SETEUGID
 	oswarn=' and will currently not work'
@@ -1076,7 +1089,7 @@ $e $bi$me: Scanning for functions... please ignore any errors.$ao
 # - LLVM+clang defines __GNUC__ too
 # - nwcc defines __GNUC__ too
 CPP="$CC -E"
-$e ... which compiler seems to be used
+$e ... which compiler type seems to be used
 cat >conftest.c <<'EOF'
 const char *
 #if defined(__ICC) || defined(__INTEL_COMPILER)
@@ -1326,7 +1339,7 @@ unknown)
 	# huh?
 	;;
 esac
-$e "$bi==> which compiler seems to be used...$ao $ui$ct$etd$ao"
+$e "$bi==> which compiler type seems to be used...$ao $ui$ct$etd$ao"
 rmf conftest.c conftest.o conftest a.out* a.exe* conftest.exe* vv.out
 
 #
@@ -1756,6 +1769,10 @@ ac_ifcpp 'ifdef MKSH_NOPROSPECTOFWORK' isset_MKSH_NOPROSPECTOFWORK '' \
     check_categories="$check_categories arge nojsig"
 ac_ifcpp 'ifdef MKSH_ASSUME_UTF8' isset_MKSH_ASSUME_UTF8 '' \
     'if the default UTF-8 mode is specified' && : "${HAVE_SETLOCALE_CTYPE=0}"
+ac_ifcpp 'if !MKSH_ASSUME_UTF8' isoff_MKSH_ASSUME_UTF8 \
+    isset_MKSH_ASSUME_UTF8 0 \
+    'if the default UTF-8 mode is disabled' && \
+    check_categories="$check_categories noutf8"
 #ac_ifcpp 'ifdef MKSH_DISABLE_DEPRECATED' isset_MKSH_DISABLE_DEPRECATED '' \
 #    "if deprecated features are to be omitted" && \
 #    check_categories="$check_categories nodeprecated"
@@ -2417,8 +2434,8 @@ cat >test.sh <<-EOF
 	set -A check_categories -- $check_categories
 	pflag='$curdir/$mkshexe'
 	sflag='$srcdir/check.t'
-	usee=0 Pflag=0 Sflag=0 uset=0 vflag=1 xflag=0
-	while getopts "C:e:fPp:QSs:t:v" ch; do case \$ch {
+	usee=0 useU=0 Pflag=0 Sflag=0 uset=0 vflag=1 xflag=0
+	while getopts "C:e:fPp:QSs:t:U:v" ch; do case \$ch {
 	(C)	check_categories[\${#check_categories[*]}]=\$OPTARG ;;
 	(e)	usee=1; eflag=\$OPTARG ;;
 	(f)	check_categories[\${#check_categories[*]}]=fastbox ;;
@@ -2431,6 +2448,7 @@ cat >test.sh <<-EOF
 	(+S)	Sflag=0 ;;
 	(s)	sflag=\$OPTARG ;;
 	(t)	uset=1; tflag=\$OPTARG ;;
+	(U)	useU=1; Uflag=\$OPTARG ;;
 	(v)	vflag=1 ;;
 	(+v)	vflag=0 ;;
 	(*)	xflag=1 ;;
@@ -2454,6 +2472,10 @@ cat >test.sh <<-EOF
 	if (( uset )); then
 		args[\${#args[*]}]=-t
 		args[\${#args[*]}]=\$tflag
+	fi
+	if (( useU )); then
+		args[\${#args[*]}]=-U
+		args[\${#args[*]}]=\$Uflag
 	fi
 	(( vflag )) && args[\${#args[*]}]=-v
 	(( xflag )) && args[\${#args[*]}]=-x	# force usage by synerr

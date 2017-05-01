@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.782 2017/04/28 11:13:45 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.787 2017/05/01 19:44:26 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright Â© 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -30,58 +30,62 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	@(#)MIRBSD KSH R55 2017/04/27
+	@(#)MIRBSD KSH R55 2017/05/01
 description:
-	Check version of shell.
+	Check base version of full shell
 stdin:
-	echo $KSH_VERSION
+	echo ${KSH_VERSION%%' +'*}
 name: KSH_VERSION
-category: !shell:legacy-yes,!shell:textmode-yes,!shell:ebcdic-yes
+category: !shell:legacy-yes
 ---
 expected-stdout:
-	@(#)LEGACY KSH R55 2017/04/27
+	@(#)LEGACY KSH R55 2017/05/01
 description:
-	Check version of legacy shell.
+	Check base version of legacy shell
 stdin:
-	echo $KSH_VERSION
+	echo ${KSH_VERSION%%' +'*}
 name: KSH_VERSION-legacy
-category: !shell:legacy-no,!shell:textmode-yes,!shell:ebcdic-yes
+category: !shell:legacy-no
 ---
-expected-stdout:
-	@(#)MIRBSD KSH R55 2017/04/27 +EBCDIC
+name: KSH_VERSION-ascii
 description:
-	Check version of shell.
+	Check that the shell version tag does not include EBCDIC
+category: !shell:ebcdic-yes
 stdin:
-	echo $KSH_VERSION
+	for x in $KSH_VERSION; do
+		[[ $x = '+EBCDIC' ]] && exit 1
+	done
+	exit 0
+---
 name: KSH_VERSION-ebcdic
-category: !shell:legacy-yes,!shell:textmode-yes,!shell:ebcdic-no
----
-expected-stdout:
-	@(#)LEGACY KSH R55 2017/04/27 +EBCDIC
 description:
-	Check version of legacy shell.
+	Check that the shell version tag includes EBCDIC
+category: !shell:ebcdic-no
 stdin:
-	echo $KSH_VERSION
-name: KSH_VERSION-legacy-ebcdic
-category: !shell:legacy-no,!shell:textmode-yes,!shell:ebcdic-no
+	for x in $KSH_VERSION; do
+		[[ $x = '+EBCDIC' ]] && exit 0
+	done
+	exit 1
 ---
-expected-stdout:
-	@(#)MIRBSD KSH R55 2017/04/27 +TEXTMODE
+name: KSH_VERSION-binmode
 description:
-	Check version of shell.
+	Check that the shell version tag does not include TEXTMODE
+category: !shell:textmode-yes
 stdin:
-	echo $KSH_VERSION
+	for x in $KSH_VERSION; do
+		[[ $x = '+TEXTMODE' ]] && exit 1
+	done
+	exit 0
+---
 name: KSH_VERSION-textmode
-category: !shell:legacy-yes,!shell:textmode-no
----
-expected-stdout:
-	@(#)LEGACY KSH R55 2017/04/27 +TEXTMODE
 description:
-	Check version of legacy shell.
+	Check that the shell version tag includes TEXTMODE
+category: !shell:textmode-no
 stdin:
-	echo $KSH_VERSION
-name: KSH_VERSION-legacy-textmode
-category: !shell:legacy-no,!shell:textmode-no
+	for x in $KSH_VERSION; do
+		[[ $x = '+TEXTMODE' ]] && exit 0
+	done
+	exit 1
 ---
 name: selftest-1
 description:
@@ -1355,7 +1359,7 @@ need-pass: no
 # the mv command fails on Cygwin
 # Hurd aborts the testsuite (permission denied)
 # QNX does not find subdir to cd into
-category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!os:os390,!nosymlink
+category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!nosymlink
 file-setup: file 644 "x"
 	mkdir noread noread/target noread/target/subdir
 	ln -s noread link
@@ -1962,15 +1966,11 @@ expected-stdout:
 name: eglob-bad-1
 description:
 	Check that globbing isn't done when glob has syntax error
-file-setup: file 644 "abcx"
-file-setup: file 644 "abcz"
-file-setup: file 644 "bbc"
+file-setup: file 644 "@(a[b|)c]foo"
 stdin:
-	echo !([*)*
-	echo +(a|b[)*
+	echo @(a[b|)c]*
 expected-stdout:
-	!([*)*
-	+(a|b[)*
+	@(a[b|)c]*
 ---
 name: eglob-bad-2
 description:
@@ -2057,9 +2057,11 @@ stdin:
 	case foo in *(a|b[)) echo yes;; *) echo no;; esac
 	case foo in *(a|b[)|f*) echo yes;; *) echo no;; esac
 	case '*(a|b[)' in *(a|b[)) echo yes;; *) echo no;; esac
+	case 'aab[b[ab[a' in *(a|b[)) echo yes;; *) echo no;; esac
 expected-stdout:
 	no
 	yes
+	no
 	yes
 ---
 name: eglob-trim-1
@@ -2354,17 +2356,26 @@ expected-stdout:
 ---
 name: glob-bad-1
 description:
-	Check that globbing isn't done when glob has syntax error
+	Check that [ matches itself if it's not a valid bracket expr
+	but does not prevent globbing, while backslash-escaping does
 file-setup: dir 755 "[x"
 file-setup: file 644 "[x/foo"
 stdin:
 	echo [*
 	echo *[x
 	echo [x/*
+	:>'ab[x'
+	:>'a[a-z][x'
+	echo a[a-z][*
+	echo a[a-z]*
+	echo a[a\-z]*
 expected-stdout:
-	[*
-	*[x
+	[x
+	[x
 	[x/foo
+	ab[x
+	ab[x
+	a[a-z]*
 ---
 name: glob-bad-2
 description:
@@ -2403,24 +2414,31 @@ file-setup: file 644 "abc"
 file-setup: file 644 "bbc"
 file-setup: file 644 "cbc"
 file-setup: file 644 "-bc"
+file-setup: file 644 "!bc"
+file-setup: file 644 "^bc"
+file-setup: file 644 "+bc"
+file-setup: file 644 ",bc"
+file-setup: file 644 "0bc"
+file-setup: file 644 "1bc"
 stdin:
 	echo [ab-]*
 	echo [-ab]*
 	echo [!-ab]*
 	echo [!ab]*
 	echo []ab]*
-	:>'./!bc'
-	:>'./^bc'
 	echo [^ab]*
-	echo [!ab]*
+	echo [+--]*
+	echo [--1]*
+
 expected-stdout:
 	-bc abc bbc
 	-bc abc bbc
-	cbc
-	-bc cbc
+	!bc +bc ,bc 0bc 1bc ^bc cbc
+	!bc +bc ,bc -bc 0bc 1bc ^bc cbc
 	abc bbc
 	^bc abc bbc
-	!bc -bc ^bc cbc
+	+bc ,bc -bc
+	-bc 0bc 1bc
 ---
 name: glob-range-2
 description:
@@ -2438,7 +2456,7 @@ description:
 # breaks on Mac OSX (HFS+ non-standard Unicode canonical decomposition)
 # breaks on Cygwin 1.7 (files are now UTF-16 or something)
 # breaks on QNX 6.4.1 (says RT)
-category: !os:cygwin,!os:darwin,!os:msys,!os:nto,!os:os2
+category: !os:cygwin,!os:darwin,!os:msys,!os:nto,!os:os2,!os:os390
 need-pass: no
 file-setup: file 644 "aÂc"
 stdin:
@@ -2465,10 +2483,32 @@ file-setup: file 644 "cbc"
 file-setup: file 644 "dbc"
 file-setup: file 644 "ebc"
 file-setup: file 644 "-bc"
+file-setup: file 644 "@bc"
 stdin:
 	echo [a-c-e]*
+	#XXX TODO: echo [a--@]*
+	# -> @bc
 expected-stdout:
 	-bc abc bbc cbc ebc
+---
+name: glob-word-1
+description:
+	Check BSD word boundary matches
+stdin:
+	t() { [[ $1 = *[[:\<:]]bar[[:\>:]]* ]]; echo =$?; }
+	t 'foo bar baz'
+	t 'foobar baz'
+	t 'foo barbaz'
+	t 'bar'
+	t '_bar'
+	t 'bar_'
+expected-stdout:
+	=0
+	=1
+	=1
+	=0
+	=1
+	=1
 ---
 name: glob-trim-1
 description:
@@ -8340,11 +8380,10 @@ expected-stdout:
 expected-stderr-pattern:
 	/(Unrecognized character .... ignored at \..t4 line 1)*/
 ---
-name: utf8opt-1a
+name: utf8opt-1
 description:
 	Check that the utf8-mode flag is not set at non-interactive startup
-category: !os:hpux
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.UTF-8!
+env-setup: !PS1=!PS2=!LC_CTYPE=@utflocale@!
 stdin:
 	if [[ $- = *U* ]]; then
 		echo is set
@@ -8354,51 +8393,15 @@ stdin:
 expected-stdout:
 	is not set
 ---
-name: utf8opt-1b
-description:
-	Check that the utf8-mode flag is not set at non-interactive startup
-category: os:hpux
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.utf8!
-stdin:
-	if [[ $- = *U* ]]; then
-		echo is set
-	else
-		echo is not set
-	fi
-expected-stdout:
-	is not set
----
-name: utf8opt-2a
+name: utf8opt-2
 description:
 	Check that the utf8-mode flag is set at interactive startup.
-	-DMKSH_ASSUME_UTF8=0 => expected failure, please ignore
-	-DMKSH_ASSUME_UTF8=1 => not expected, please investigate
-	-UMKSH_ASSUME_UTF8 => not expected, but if your OS is old,
-	 try passing HAVE_SETLOCALE_CTYPE=0 to Build.sh
+	If your OS is old, try passing HAVE_SETLOCALE_CTYPE=0 to Build.sh
 need-pass: no
-category: !os:hpux,!os:msys,!os:os2
+category: !noutf8
 need-ctty: yes
 arguments: !-i!
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.UTF-8!
-stdin:
-	if [[ $- = *U* ]]; then
-		echo is set
-	else
-		echo is not set
-	fi
-expected-stdout:
-	is set
-expected-stderr-pattern:
-	/(# )*/
----
-name: utf8opt-2b
-description:
-	Check that the utf8-mode flag is set at interactive startup
-	Expected failure if -DMKSH_ASSUME_UTF8=0
-category: os:hpux
-need-ctty: yes
-arguments: !-i!
-env-setup: !PS1=!PS2=!LC_CTYPE=en_US.utf8!
+env-setup: !PS1=!PS2=!LC_CTYPE=@utflocale@!
 stdin:
 	if [[ $- = *U* ]]; then
 		echo is set

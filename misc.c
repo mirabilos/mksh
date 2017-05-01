@@ -32,7 +32,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.269 2017/04/28 11:13:48 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.274 2017/05/01 19:44:29 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -49,7 +49,8 @@ unsigned char chtypes[UCHAR_MAX + 1];
 static const unsigned char *pat_scan(const unsigned char *,
     const unsigned char *, bool) MKSH_A_PURE;
 static int do_gmatch(const unsigned char *, const unsigned char *,
-    const unsigned char *, const unsigned char *) MKSH_A_PURE;
+    const unsigned char *, const unsigned char *,
+    const unsigned char *) MKSH_A_PURE;
 static const unsigned char *gmatch_cclass(const unsigned char *, unsigned char)
     MKSH_A_PURE;
 #ifdef KSH_CHVT_CODE
@@ -556,7 +557,7 @@ simplify_gmatch_pattern(const unsigned char *sp)
 	sp = cp;
  simplify_gmatch_pat1a:
 	dp = cp;
-	se = sp + strlen((const void *)sp);
+	se = strnul(sp);
 	while ((c = *sp++)) {
 		if (!ISMAGIC(c)) {
 			*dp++ = c;
@@ -628,29 +629,30 @@ gmatchx(const char *s, const char *p, bool isfile)
 	if (s == NULL || p == NULL)
 		return (0);
 
-	se = s + strlen(s);
-	pe = p + strlen(p);
+	pe = strnul(p);
 	/*
 	 * isfile is false iff no syntax check has been done on
 	 * the pattern. If check fails, just do a strcmp().
 	 */
-	if (!isfile && !has_globbing(p, pe)) {
+	if (!isfile && !has_globbing(p)) {
 		size_t len = pe - p + 1;
 		char tbuf[64];
 		char *t = len <= sizeof(tbuf) ? tbuf : alloc(len, ATEMP);
 		debunk(t, p, len);
 		return (!strcmp(t, s));
 	}
+	se = strnul(s);
 
 	/*
 	 * since the do_gmatch() engine sucks so much, we must do some
 	 * pattern simplifications
 	 */
 	pnew = simplify_gmatch_pattern((const unsigned char *)p);
-	pe = pnew + strlen(pnew);
+	pe = strnul(pnew);
 
 	rv = do_gmatch((const unsigned char *)s, (const unsigned char *)se,
-	    (const unsigned char *)pnew, (const unsigned char *)pe);
+	    (const unsigned char *)pnew, (const unsigned char *)pe,
+	    (const unsigned char *)s);
 	afree(pnew, ATEMP);
 	return (rv);
 }
@@ -661,7 +663,7 @@ gmatchx(const char *s, const char *p, bool isfile)
  * Syntax errors are:
  *	- [ with no closing ]
  *	- imbalanced $(...) expression
- *	- [...] and *(...) not nested (eg, [a$(b|]c), *(a[b|c]d))
+ *	- [...] and *(...) not nested (eg, @(a[b|)c], *(a[b|c]d))
  */
 /*XXX
  * - if no magic,
@@ -672,73 +674,101 @@ gmatchx(const char *s, const char *p, bool isfile)
  *	return ?
  * - return ?
  */
-int
-has_globbing(const char *xp, const char *xpe)
+bool
+has_globbing(const char *pat)
 {
-	const unsigned char *p = (const unsigned char *) xp;
-	const unsigned char *pe = (const unsigned char *) xpe;
-	int c;
-	int nest = 0, bnest = 0;
+	unsigned char c, subc;
 	bool saw_glob = false;
-	/* inside [...] */
-	bool in_bracket = false;
+	unsigned int nest = 0;
+	const unsigned char *p = (const unsigned char *)pat;
+	const unsigned char *s;
 
-	for (; p < pe; p++) {
-		if (!ISMAGIC(*p))
+	while ((c = *p++)) {
+		/* regular character? ok. */
+		if (!ISMAGIC(c))
 			continue;
-		if ((c = *++p) == '*' || c == '?')
+		/* MAGIC + NUL? abort. */
+		if (!(c = *p++))
+			return (false);
+		/* some specials */
+		if (ord(c) == ord('*') || ord(c) == ord('?')) {
+			/* easy glob, accept */
 			saw_glob = true;
-		else if (c == '[') {
-			if (!in_bracket) {
-				saw_glob = true;
-				in_bracket = true;
-				if (ISMAGIC(p[1]) && p[2] == '!')
-					p += 2;
-				if (ISMAGIC(p[1]) && p[2] == ']')
-					p += 2;
-			}
-			/*XXX Do we need to check ranges here? POSIX Q */
-		} else if (c == ']') {
-			if (in_bracket) {
-				if (bnest)
-					/* [a*(b]) */
-					return (0);
-				in_bracket = false;
+		} else if (ord(c) == ord('[')) {
+			/* bracket expression; eat negation and initial ] */
+			if (ISMAGIC(p[0]) && ord(p[1]) == ord('!'))
+				p += 2;
+			if (ISMAGIC(p[0]) && ord(p[1]) == ord(']'))
+				p += 2;
+			/* check next string part */
+			s = p;
+			while ((c = *s++)) {
+				/* regular chars are ok */
+				if (!ISMAGIC(c))
+					continue;
+				/* MAGIC + NUL cannot happen */
+				if (!(c = *s++))
+					return (false);
+				/* terminating bracket? */
+				if (ord(c) == ord(']')) {
+					/* accept and continue */
+					p = s;
+					saw_glob = true;
+					break;
+				}
+				/* sub-bracket expressions */
+				if (ord(c) == ord('[') && (
+				    /* collating element? */
+				    ord(*s) == ord('.') ||
+				    /* equivalence class? */
+				    ord(*s) == ord('=') ||
+				    /* character class? */
+				    ord(*s) == ord(':'))) {
+					/* must stop with exactly the same c */
+					subc = *s++;
+					/* arbitrarily many chars in betwixt */
+					while ((c = *s++))
+						/* but only this sequence... */
+						if (c == subc && ISMAGIC(*s) &&
+						    ord(s[1]) == ord(']')) {
+							/* accept, terminate */
+							s += 2;
+							break;
+						}
+					/* EOS without: reject bracket expr */
+					if (!c)
+						break;
+					/* continue; */
+				}
+				/* anything else just goes on */
 			}
 		} else if ((c & 0x80) && ctype(c & 0x7F, C_PATMO | C_SPC)) {
+			/* opening pattern */
 			saw_glob = true;
-			if (in_bracket)
-				bnest++;
-			else
-				nest++;
-		} else if (c == '|') {
-			if (in_bracket && !bnest)
-				/* *(a[foo|bar]) */
-				return (0);
-		} else if (c == /*(*/ ')') {
-			if (in_bracket) {
-				if (!bnest--)
-					/* *(a[b)c] */
-					return (0);
-			} else if (nest)
-				nest--;
+			++nest;
+		} else if (ord(c) == ord(/*(*/')')) {
+			/* closing pattern */
+			if (nest)
+				--nest;
 		}
-		/* else must be MAGIC followed by MAGIC or one of: ]{},!- */
 	}
-	return (saw_glob && !in_bracket && !nest);
+	return (saw_glob && !nest);
 }
 
 /* Function must return either 0 or 1 (assumed by code for 0x80|'!') */
 static int
 do_gmatch(const unsigned char *s, const unsigned char *se,
-    const unsigned char *p, const unsigned char *pe)
+    const unsigned char *p, const unsigned char *pe,
+    const unsigned char *smin)
 {
-	unsigned char sc, pc;
+	unsigned char sc, pc, sl = 0;
 	const unsigned char *prest, *psub, *pnext;
 	const unsigned char *srest;
 
 	if (s == NULL || p == NULL)
 		return (0);
+	if (s > smin && s <= se)
+		sl = s[-1];
 	while (p < pe) {
 		pc = *p++;
 		sc = s < se ? *s : '\0';
@@ -746,10 +776,34 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 		if (!ISMAGIC(pc)) {
 			if (sc != pc)
 				return (0);
+			sl = sc;
 			continue;
 		}
 		switch (*p++) {
 		case '[':
+			/* BSD cclass extension? */
+			if (ISMAGIC(p[0]) && ord(p[1]) == ord('[') &&
+			    ord(p[2]) == ord(':') &&
+			    ctype((pc = p[3]), C_ANGLE) &&
+			    ord(p[4]) == ord(':') &&
+			    ISMAGIC(p[5]) && ord(p[6]) == ord(']') &&
+			    ISMAGIC(p[7]) && ord(p[8]) == ord(']')) {
+				/* zero-length match */
+				--s;
+				p += 9;
+				/* word begin? */
+				if (ord(pc) == ord('<') &&
+				    !ctype(sl, C_ALNUX) &&
+				    ctype(sc, C_ALNUX))
+					break;
+				/* word end? */
+				if (ord(pc) == ord('>') &&
+				    ctype(sl, C_ALNUX) &&
+				    !ctype(sc, C_ALNUX))
+					break;
+				/* neither */
+				return (0);
+			}
 			if (sc == 0 || (p = gmatch_cclass(p, sc)) == NULL)
 				return (0);
 			break;
@@ -768,13 +822,13 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 				return (1);
 			s--;
 			do {
-				if (do_gmatch(s, se, p, pe))
+				if (do_gmatch(s, se, p, pe, smin))
 					return (1);
 			} while (s++ < se);
 			return (0);
 
 		/**
-		 * [*+?@!](pattern|pattern|..)
+		 * [+*?@!](pattern|pattern|..)
 		 * This is also needed for ${..%..}, etc.
 		 */
 
@@ -787,15 +841,15 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 			s--;
 			/* take care of zero matches */
 			if (p[-1] == (0x80 | '*') &&
-			    do_gmatch(s, se, prest, pe))
+			    do_gmatch(s, se, prest, pe, smin))
 				return (1);
 			for (psub = p; ; psub = pnext) {
 				pnext = pat_scan(psub, pe, true);
 				for (srest = s; srest <= se; srest++) {
-					if (do_gmatch(s, srest, psub, pnext - 2) &&
-					    (do_gmatch(srest, se, prest, pe) ||
-					    (s != srest && do_gmatch(srest,
-					    se, p - 2, pe))))
+					if (do_gmatch(s, srest, psub, pnext - 2, smin) &&
+					    (do_gmatch(srest, se, prest, pe, smin) ||
+					    (s != srest &&
+					    do_gmatch(srest, se, p - 2, pe, smin))))
 						return (1);
 				}
 				if (pnext == prest)
@@ -814,14 +868,14 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 			s--;
 			/* Take care of zero matches */
 			if (p[-1] == (0x80 | '?') &&
-			    do_gmatch(s, se, prest, pe))
+			    do_gmatch(s, se, prest, pe, smin))
 				return (1);
 			for (psub = p; ; psub = pnext) {
 				pnext = pat_scan(psub, pe, true);
 				srest = prest == pe ? se : s;
 				for (; srest <= se; srest++) {
-					if (do_gmatch(s, srest, psub, pnext - 2) &&
-					    do_gmatch(srest, se, prest, pe))
+					if (do_gmatch(s, srest, psub, pnext - 2, smin) &&
+					    do_gmatch(srest, se, prest, pe, smin))
 						return (1);
 				}
 				if (pnext == prest)
@@ -840,7 +894,7 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 				for (psub = p; ; psub = pnext) {
 					pnext = pat_scan(psub, pe, true);
 					if (do_gmatch(s, srest, psub,
-					    pnext - 2)) {
+					    pnext - 2, smin)) {
 						matched = 1;
 						break;
 					}
@@ -848,7 +902,7 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 						break;
 				}
 				if (!matched &&
-				    do_gmatch(srest, se, prest, pe))
+				    do_gmatch(srest, se, prest, pe, smin))
 					return (1);
 			}
 			return (0);
@@ -858,12 +912,89 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 				return (0);
 			break;
 		}
+		sl = sc;
 	}
 	return (s == se);
 }
 
+/*XXX this is a prime example for bsearch or a const hashtable */
+static const struct cclass {
+	const char *name;
+	uint32_t value;
+} cclasses[] = {
+	/* POSIX */
+	{ "alnum",	C_ALNUM	},
+	{ "alpha",	C_ALPHA	},
+	{ "blank",	C_BLANK	},
+	{ "cntrl",	C_CNTRL	},
+	{ "digit",	C_DIGIT	},
+	{ "graph",	C_GRAPH	},
+	{ "lower",	C_LOWER	},
+	{ "print",	C_PRINT	},
+	{ "punct",	C_PUNCT	},
+	{ "space",	C_SPACE	},
+	{ "upper",	C_UPPER	},
+	{ "xdigit",	C_SEDEC	},
+	/* BSD */
+	/* "<" and ">" are handled inline */
+	/* GNU bash */
+	{ "ascii",	C_ASCII	},
+	{ "word",	C_ALNUX	},
+	/* mksh */
+	{ "sh_alias",	C_ALIAS	},
+	{ "sh_edq",	C_EDQ	},
+	{ "sh_ifs",	C_IFS	},
+	{ "sh_ifsws",	C_IFSWS	},
+	{ "sh_nl",	C_NL	},
+	{ "sh_quote",	C_QUOTE	},
+	/* sentinel */
+	{ NULL,		0	}
+};
+
 static const unsigned char *
 gmatch_cclass(const unsigned char *p, unsigned char sub)
+#if 0
+gmatch_cclass(const unsigned char *pat, unsigned char sc)
+{
+	unsigned char c, subc;
+	const unsigned char *p = pat, *s;
+	bool found = false;
+	bool negated = false;
+
+	/* check for negation */
+	if (ISMAGIC(p[0]) && ord(p[1]) == ord('!')) {
+		p += 2;
+		negated = true;
+	}
+	/* make initial ] non-MAGIC */
+	if (ISMAGIC(p[0]) && ord(p[1]) == ord(']'))
+		++p;
+	/* iterate over bracket expression, debunk()ing on the fly */
+	while ((c = *p++)) {
+		/* non-regular character? */
+		if (ISMAGIC(c)) {
+			/* MAGIC + NUL cannot happen */
+			if (!(c = *p++))
+				break;
+			/* terminating bracket? */
+			if (ord(c) == ord(']')) {
+				/* accept and return */
+				return (found != negated ? p : NULL);
+			}
+			/* sub-bracket expressions */
+			if (ord(c) == ord('[') && (
+			    /* collating element? */
+			    ord(*p) == ord('.') ||
+			    /* equivalence class? */
+			    ord(*p) == ord('=') ||
+			    /* character class? */
+			    ord(*p) == ord(':'))) {
+				/* must stop with exactly the same c */
+				subc = *p++;
+				/* save away start of substring */
+				s = p;
+}
+#endif
 {
 	unsigned char c, d;
 	bool notp, found = false;
@@ -1191,7 +1322,7 @@ print_value_quoted(struct shf *shf, const char *s)
 #if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
 				  if (ksh_isctrl(c))
 #else
-				  if (c < 32 || c > 0x7E)
+				  if (!ctype(c, C_PRINT))
 #endif
 				    {
 					/* FALLTHROUGH */
