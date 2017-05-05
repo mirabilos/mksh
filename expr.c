@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.96 2017/04/27 23:12:46 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.98 2017/05/05 22:53:28 tg Exp $");
 
 #define EXPRTOK_DEFNS
 #include "exprtok.h"
@@ -558,9 +558,9 @@ exprtoken(Expr_state *es)
 
 	/* skip whitespace */
  skip_spaces:
-	while (ctype((c = *cp), C_SPACE))
+	while (ctype(ord((c = *cp)), C_SPACE))
 		++cp;
-	if (es->tokp == es->expression && c == '#') {
+	if (es->tokp == es->expression && c == ord('#')) {
 		/* expression begins with # */
 		/* switch to unsigned */
 		es->natural = true;
@@ -573,9 +573,9 @@ exprtoken(Expr_state *es)
 		es->tok = END;
 	else if (ctype(c, C_ALPHX)) {
 		do {
-			c = *++cp;
+			c = ord(*++cp);
 		} while (ctype(c, C_ALNUX));
-		if (c == '[') {
+		if (c == ord('[')) {
 			size_t len;
 
 			len = array_ref_len(cp);
@@ -619,7 +619,7 @@ exprtoken(Expr_state *es)
 #endif
 	} else if (ctype(c, C_DIGIT)) {
 		while (ctype(c, C_ALNUM | C_HASH))
-			c = *cp++;
+			c = ord(*cp++);
 		strndupx(tvar, es->tokp, --cp - es->tokp, ATEMP);
  process_tvar:
 		es->val = tempvar("");
@@ -633,7 +633,7 @@ exprtoken(Expr_state *es)
 	} else {
 		int i, n0;
 
-		for (i = 0; (n0 = opname[i][0]); i++)
+		for (i = 0; (n0 = ord(opname[i][0])); i++)
 			if (c == n0 && strncmp(cp, opname[i],
 			    (size_t)oplen[i]) == 0) {
 				es->tok = (enum token)i;
@@ -772,8 +772,7 @@ utf_ptradj(const char *src)
 {
 	register size_t n;
 
-	if (!UTFMODE ||
-	    *(const unsigned char *)(src) < 0xC2 ||
+	if (!UTFMODE || rtt2asc(*src) < 0xC2 ||
 	    (n = utf_mbtowc(NULL, src)) == (size_t)-1)
 		n = 1;
 	return (n);
@@ -791,7 +790,7 @@ utf_mbtowc(unsigned int *dst, const char *src)
 	const unsigned char *s = (const unsigned char *)src;
 	unsigned int c, wc;
 
-	if ((wc = *s++) < 0x80) {
+	if ((wc = ord(rtt2asc(*s++))) < 0x80) {
  out:
 		if (dst != NULL)
 			*dst = wc;
@@ -805,7 +804,7 @@ utf_mbtowc(unsigned int *dst, const char *src)
 
 	if (wc < 0xE0) {
 		wc = (wc & 0x1F) << 6;
-		if (((c = *s++) & 0xC0) != 0x80)
+		if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 			goto ilseq;
 		wc |= c & 0x3F;
 		goto out;
@@ -813,11 +812,11 @@ utf_mbtowc(unsigned int *dst, const char *src)
 
 	wc = (wc & 0x0F) << 12;
 
-	if (((c = *s++) & 0xC0) != 0x80)
+	if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 		goto ilseq;
 	wc |= (c & 0x3F) << 6;
 
-	if (((c = *s++) & 0xC0) != 0x80)
+	if (((c = ord(rtt2asc(*s++))) & 0xC0) != 0x80)
 		goto ilseq;
 	wc |= c & 0x3F;
 
@@ -834,18 +833,18 @@ utf_wctomb(char *dst, unsigned int wc)
 	unsigned char *d;
 
 	if (wc < 0x80) {
-		*dst = wc;
+		*dst = asc2rtt(wc);
 		return (1);
 	}
 
 	d = (unsigned char *)dst;
 	if (wc < 0x0800)
-		*d++ = (wc >> 6) | 0xC0;
+		*d++ = asc2rtt((wc >> 6) | 0xC0);
 	else {
-		*d++ = ((wc = wc > 0xFFFD ? 0xFFFD : wc) >> 12) | 0xE0;
-		*d++ = ((wc >> 6) & 0x3F) | 0x80;
+		*d++ = asc2rtt(((wc = wc > 0xFFFD ? 0xFFFD : wc) >> 12) | 0xE0);
+		*d++ = asc2rtt(((wc >> 6) & 0x3F) | 0x80);
 	}
-	*d++ = (wc & 0x3F) | 0x80;
+	*d++ = asc2rtt((wc & 0x3F) | 0x80);
 	return ((char *)d - dst);
 }
 
