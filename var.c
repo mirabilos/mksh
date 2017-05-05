@@ -28,7 +28,7 @@
 #include <sys/sysctl.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/var.c,v 1.217 2017/04/29 22:04:31 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/var.c,v 1.219 2017/05/05 22:53:32 tg Exp $");
 
 /*-
  * Variables
@@ -204,7 +204,7 @@ array_index_calc(const char *n, bool *arrayp, uint32_t *valp)
 	}
 	innermost_refflag = SRF_NOP;
 
-	if (p != n && *p == '[' && (len = array_ref_len(p))) {
+	if (p != n && ord(*p) == ord('[') && (len = array_ref_len(p))) {
 		char *sub, *tmp;
 		mksh_ari_t rval;
 
@@ -414,9 +414,11 @@ str_val(struct tbl *vp)
 
 			*(s = strbuf) = '1';
 			s[1] = '#';
-			if (!UTFMODE || ((n & 0xFF80) == 0xEF80))
+			if (!UTFMODE)
+				s[2] = (unsigned char)n;
+			else if ((n & 0xFF80) == 0xEF80)
 				/* OPTU-16 -> raw octet */
-				s[2] = n & 0xFF;
+				s[2] = asc2rtt(n & 0xFF);
 			else
 				sz = utf_wctomb(s + 2, n);
 			s[2 + sz] = '\0';
@@ -577,7 +579,7 @@ getint(struct tbl *vp, mksh_ari_u *nump, bool arith)
 					 * the same as 1#\x80 does, thus is
 					 * not round-tripping correctly XXX)
 					 */
-					wc = 0xEF00 + *(const unsigned char *)s;
+					wc = 0xEF00 + rtt2asc(*s);
 				nump->u = (mksh_uari_t)wc;
 				return (1);
 			} else if (base > 36)
@@ -778,7 +780,7 @@ typeset(const char *var, uint32_t set, uint32_t clr, int field, int base)
 		/* no variable name given */
 		return (NULL);
 	}
-	if (*val == '[') {
+	if (ord(*val) == ord('[')) {
 		if (new_refflag != SRF_NOP)
 			errorf(Tf_sD_s, var,
 			    "reference variable can't be an array");
@@ -801,13 +803,13 @@ typeset(const char *var, uint32_t set, uint32_t clr, int field, int base)
 		}
 		val += len;
 	}
-	if (val[0] == '=') {
+	if (ord(val[0]) == ord('=')) {
 		strndupx(tvar, var, val - var, ATEMP);
 		++val;
 	} else if (set & IMPORT) {
 		/* environment invalid variable name or no assignment */
 		return (NULL);
-	} else if (val[0] == '+' && val[1] == '=') {
+	} else if (ord(val[0]) == ord('+') && ord(val[1]) == ord('=')) {
 		strndupx(tvar, var, val - var, ATEMP);
 		val += 2;
 		vappend = true;
@@ -820,8 +822,9 @@ typeset(const char *var, uint32_t set, uint32_t clr, int field, int base)
 		val = NULL;
 		/* handle foo[*] => foo (whole array) mapping for R39b */
 		len = strlen(tvar);
-		if (len > 3 && tvar[len - 3] == '[' && tvar[len - 2] == '*' &&
-		    tvar[len - 1] == ']')
+		if (len > 3 && ord(tvar[len - 3]) == ord('[') &&
+		    ord(tvar[len - 2]) == ord('*') &&
+		    ord(tvar[len - 1]) == ord(']'))
 			tvar[len - 3] = '\0';
 	}
 
@@ -858,7 +861,7 @@ typeset(const char *var, uint32_t set, uint32_t clr, int field, int base)
  nameref_empty:
 			errorf(Tf_sD_s, var, "empty nameref target");
 		}
-		len = (*ccp == '[') ? array_ref_len(ccp) : 0;
+		len = (ord(*ccp) == ord('[')) ? array_ref_len(ccp) : 0;
 		if (ccp[len]) {
 			/*
 			 * works for cases "no array", "valid array with
@@ -1068,7 +1071,7 @@ skip_varname(const char *s, bool aok)
 		do {
 			++s;
 		} while (ctype(*s, C_ALNUX));
-		if (aok && *s == '[' && (alen = array_ref_len(s)))
+		if (aok && ord(*s) == ord('[') && (alen = array_ref_len(s)))
 			s += alen;
 	}
 	return (s);
@@ -1084,7 +1087,7 @@ skip_wdvarname(const char *s,
 		do {
 			s += 2;
 		} while (s[0] == CHAR && ctype(s[1], C_ALNUX));
-		if (aok && s[0] == CHAR && s[1] == '[') {
+		if (aok && s[0] == CHAR && ord(s[1]) == ord('[')) {
 			/* skip possible array de-reference */
 			const char *p = s;
 			char c;
@@ -1095,9 +1098,9 @@ skip_wdvarname(const char *s,
 					break;
 				c = p[1];
 				p += 2;
-				if (c == '[')
+				if (ord(c) == ord('['))
 					depth++;
-				else if (c == ']' && --depth == 0) {
+				else if (ord(c) == ord(']') && --depth == 0) {
 					s = p;
 					break;
 				}
@@ -1525,8 +1528,8 @@ array_ref_len(const char *cp)
 	char c;
 	int depth = 0;
 
-	while ((c = *s++) && (c != ']' || --depth))
-		if (c == '[')
+	while ((c = *s++) && (ord(c) != ord(']') || --depth))
+		if (ord(c) == ord('['))
 			depth++;
 	if (!c)
 		return (0);
@@ -1598,17 +1601,18 @@ set_array(const char *var, bool reset, const char **vals)
 	}
 	while ((ccp = vals[i])) {
 #if 0 /* temporarily taken out due to regression */
-		if (*ccp == '[') {
+		if (ord(*ccp) == ord('[')) {
 			int level = 0;
 
 			while (*ccp) {
-				if (*ccp == ']' && --level == 0)
+				if (ord(*ccp) == ord(']') && --level == 0)
 					break;
-				if (*ccp == '[')
+				if (ord(*ccp) == ord('['))
 					++level;
 				++ccp;
 			}
-			if (*ccp == ']' && level == 0 && ccp[1] == '=') {
+			if (ord(*ccp) == ord(']') && level == 0 &&
+			    ord(ccp[1]) == ord('=')) {
 				strndupx(cp, vals[i] + 1, ccp - (vals[i] + 1),
 				    ATEMP);
 				evaluate(substitute(cp, 0), (mksh_ari_t *)&j,

@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.789 2017/05/03 17:48:06 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.792 2017/05/05 22:53:24 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -30,7 +30,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	@(#)MIRBSD KSH R55 2017/05/01
+	@(#)MIRBSD KSH R55 2017/05/05
 description:
 	Check base version of full shell
 stdin:
@@ -1356,10 +1356,10 @@ name: cd-pe
 description:
 	Check package for cd -Pe
 need-pass: no
-# the mv command fails on Cygwin
+# the mv command fails on Cygwin and z/OS
 # Hurd aborts the testsuite (permission denied)
 # QNX does not find subdir to cd into
-category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!nosymlink
+category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!os:os390,!nosymlink
 file-setup: file 644 "x"
 	mkdir noread noread/target noread/target/subdir
 	ln -s noread link
@@ -8457,7 +8457,7 @@ description:
 	note: Ultrix perl5 t4 returns 65280 (exit-code 255) and no text
 	XXX fails when LD_PRELOAD is set with -e and Perl chokes it (ASan)
 need-pass: no
-category: !os:cygwin,!os:msys,!os:ultrix,!os:uwin-nt,!smksh,!shell:ebcdic-yes
+category: !os:cygwin,!os:msys,!os:ultrix,!os:uwin-nt,!smksh
 env-setup: !FOO=BAR!
 stdin:
 	print '#!'"$__progname"'\nprint "1 a=$ENV{FOO}";' >t1
@@ -12742,13 +12742,13 @@ description:
 	Test what the echo builtin does, and test a compatibility flag.
 category: !mnbsdash,!shell:ebcdic-no
 stdin:
-	"$__progname" -c 'echo -n 1=\\x7C$1; echo -e \\x2E' -- foo bar
-	"$__progname" -o posix -c 'echo -n 2=\\x7C$1; echo -e \\x2E' -- foo bar
-	"$__progname" -o sh -c 'echo -n 3=\\x7C$1; echo -e \\x2E' -- foo bar
+	"$__progname" -c 'echo -n 1=\\x7C$1; echo -e \\x4B' -- foo bar
+	"$__progname" -o posix -c 'echo -n 2=\\x7C$1; echo -e \\x4B' -- foo bar
+	"$__progname" -o sh -c 'echo -n 3=\\x7C$1; echo -e \\x4B' -- foo bar
 expected-stdout:
 	1=@foo.
-	2=\x7Cfoo-e \x2E
-	3=\x7Cfoo-e \x2E
+	2=\x7Cfoo-e \x4B
+	3=\x7Cfoo-e \x4B
 ---
 name: utilities-getopts-1
 description:
