@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.726 2017/08/07 20:40:56 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.729 2017/12/22 18:36:21 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017
@@ -796,6 +796,8 @@ Harvey)
 	add_cppflags -DMKSH_ASSUME_UTF8
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	add_cppflags -DMKSH__NO_SYMLINK
+	check_categories="$check_categories nosymlink"
 	add_cppflags -DMKSH_NO_CMDLINE_EDITING
 	add_cppflags -DMKSH__NO_SETEUGID
 	oswarn=' and will currently not work'
@@ -818,6 +820,23 @@ Interix)
 	;;
 IRIX*)
 	: "${HAVE_SETLOCALE_CTYPE=0}"
+	;;
+Jehanne)
+	: "${HAVE_TERMIOS_H=1}"
+	: "${HAVE_GETRUSAGE=1}"
+	: "${LDSTATIC=-static}"
+	add_cppflags -DMKSH_ASSUME_UTF8
+	HAVE_ISSET_MKSH_ASSUME_UTF8=1
+	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	add_cppflags -DMKSH__NO_SYMLINK
+	check_categories="$check_categories nosymlink"
+	add_cppflags -DMKSH_NO_CMDLINE_EDITING
+	add_cppflags -DMKSH_DISABLE_REVOKE_WARNING
+	add_cppflags '-D_PATH_DEFPATH=\"/cmd\"'
+	add_cppflags '-DMKSH_DEFAULT_EXECSHELL=\"/cmd/mksh\"'
+	add_cppflags '-DMKSH_DEFAULT_PROFILEDIR=\"/cfg/mksh\"'
+	add_cppflags '-DMKSH_ENVDIR=\"/env\"'
+	SRCS="$SRCS jehanne.c"
 	;;
 Linux)
 	case $CC in
@@ -947,6 +966,8 @@ Plan9)
 	add_cppflags -DMKSH_ASSUME_UTF8
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	add_cppflags -DMKSH__NO_SYMLINK
+	check_categories="$check_categories nosymlink"
 	add_cppflags -DMKSH_NO_CMDLINE_EDITING
 	add_cppflags -DMKSH__NO_SETEUGID
 	oswarn=' and will currently not work'
@@ -2409,7 +2430,7 @@ addsrcs '!' HAVE_STRLCPY strlcpy.c
 addsrcs USE_PRINTF_BUILTIN printf.c
 test 1 = "$USE_PRINTF_BUILTIN" && add_cppflags -DMKSH_PRINTF_BUILTIN
 test 1 = "$HAVE_CAN_VERB" && CFLAGS="$CFLAGS -verbose"
-add_cppflags -DMKSH_BUILD_R=561
+add_cppflags -DMKSH_BUILD_R=562
 
 $e $bi$me: Finished configuration testing, now producing output.$ao
 

@@ -34,9 +34,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.342 2017/04/28 11:13:47 tg Exp $");
-
-extern char **environ;
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.345 2017/10/14 21:05:22 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -52,6 +50,7 @@ void chvt_reinit(void);
 static void reclaim(void);
 static void remove_temps(struct temp *);
 static mksh_uari_t rndsetup(void);
+static void init_environ(void);
 #ifdef SIGWINCH
 static void x_sigwinch(int);
 #endif
@@ -242,10 +241,6 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	set_ifs(TC_IFSWS);
 
 #ifdef __OS2__
-	for (i = 0; i < 3; ++i)
-		if (!isatty(i))
-			setmode(i, O_BINARY);
-
 	os2_init(&argc, &argv);
 #endif
 
@@ -401,14 +396,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 #endif
 
 	/* import environment */
-	if (environ != NULL) {
-		wp = (const char **)environ;
-		while (*wp != NULL) {
-			rndpush(*wp);
-			typeset(*wp, IMPORT | EXPORT, 0, 0, 0);
-			++wp;
-		}
-	}
+	init_environ();
 
 	/* for security */
 	typeset(TinitIFS, 0, 0, 0, 0);
@@ -665,8 +653,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		if (Flag(FLOGIN))
 			include(substitute("$HOME/.profile", 0), 0, NULL, true);
 		if (Flag(FTALKING)) {
-			cp = substitute(substitute("${ENV:-" MKSHRC_PATH "}",
-			    0), DOTILDE);
+			cp = substitute("${ENV:-" MKSHRC_PATH "}", DOTILDE);
 			if (cp[0] != '\0')
 				include(cp, 0, NULL, true);
 		}
@@ -1981,3 +1968,84 @@ x_mkraw(int fd, mksh_ttyst *ocb, bool forread)
 
 	mksh_tcset(fd, &cb);
 }
+
+#ifdef MKSH_ENVDIR
+static void
+init_environ(void)
+{
+	char *xp;
+	ssize_t n;
+	XString xs;
+	struct shf *shf;
+	DIR *dirp;
+	struct dirent *dent;
+
+	if ((dirp = opendir(MKSH_ENVDIR)) == NULL) {
+		warningf(false, "cannot read environment from %s: %s",
+		    MKSH_ENVDIR, cstrerror(errno));
+		return;
+	}
+	XinitN(xs, 256, ATEMP);
+ read_envfile:
+	errno = 0;
+	if ((dent = readdir(dirp)) != NULL) {
+		if (skip_varname(dent->d_name, true)[0] == '\0') {
+			xp = shf_smprintf(Tf_sSs, MKSH_ENVDIR, dent->d_name);
+			if (!(shf = shf_open(xp, O_RDONLY, 0, 0))) {
+				warningf(false,
+				    "cannot read environment %s from %s: %s",
+				    dent->d_name, MKSH_ENVDIR,
+				    cstrerror(errno));
+				goto read_envfile;
+			}
+			afree(xp, ATEMP);
+			n = strlen(dent->d_name);
+			xp = Xstring(xs, xp);
+			XcheckN(xs, xp, n + 32);
+			memcpy(xp, dent->d_name, n);
+			xp += n;
+			*xp++ = '=';
+			while ((n = shf_read(xp, Xnleft(xs, xp), shf)) > 0) {
+				xp += n;
+				if (Xnleft(xs, xp) <= 0)
+					XcheckN(xs, xp, Xlength(xs, xp));
+			}
+			if (n < 0) {
+				warningf(false,
+				    "cannot read environment %s from %s: %s",
+				    dent->d_name, MKSH_ENVDIR,
+				    cstrerror(shf_errno(shf)));
+			} else {
+				*xp = '\0';
+				xp = Xstring(xs, xp);
+				rndpush(xp);
+				typeset(xp, IMPORT | EXPORT, 0, 0, 0);
+			}
+			shf_close(shf);
+		}
+		goto read_envfile;
+	} else if (errno)
+		warningf(false, "cannot read environment from %s: %s",
+		    MKSH_ENVDIR, cstrerror(errno));
+	closedir(dirp);
+	Xfree(xs, xp);
+}
+#else
+extern char **environ;
+
+static void
+init_environ(void)
+{
+	const char **wp;
+
+	if (environ == NULL)
+		return;
+
+	wp = (const char **)environ;
+	while (*wp != NULL) {
+		rndpush(*wp);
+		typeset(*wp, IMPORT | EXPORT, 0, 0, 0);
+		++wp;
+	}
+}
+#endif
