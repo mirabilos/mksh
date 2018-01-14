@@ -2,7 +2,7 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2016, 2017
+ *		 2011, 2012, 2013, 2014, 2016, 2017, 2018
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.101 2017/11/18 12:01:53 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.103 2018/01/14 01:29:47 tg Exp $");
 
 #define EXPRTOK_DEFNS
 #include "exprtok.h"
@@ -558,9 +558,11 @@ exprtoken(Expr_state *es)
 
 	/* skip whitespace */
  skip_spaces:
-	while (ctype(ord((c = *cp)), C_SPACE))
-		++cp;
-	if (es->tokp == es->expression && c == ord('#')) {
+	--cp;
+	do {
+		c = ord(*++cp);
+	} while (ctype(c, C_SPACE));
+	if (es->tokp == es->expression && (unsigned int)c == ORD('#')) {
 		/* expression begins with # */
 		/* switch to unsigned */
 		es->natural = true;
@@ -575,7 +577,7 @@ exprtoken(Expr_state *es)
 		do {
 			c = ord(*++cp);
 		} while (ctype(c, C_ALNUX));
-		if (c == ord('[')) {
+		if ((unsigned int)c == ORD('[')) {
 			size_t len;
 
 			len = array_ref_len(cp);

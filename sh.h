@@ -10,7 +10,7 @@
 
 /*-
  * Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *	       2011, 2012, 2013, 2014, 2015, 2016, 2017
+ *	       2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -182,9 +182,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.849 2017/10/17 23:45:19 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.858 2018/01/14 01:47:36 tg Exp $");
 #endif
-#define MKSH_VERSION "R56 2017/10/17"
+#define MKSH_VERSION "R56 2018/01/14"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -556,7 +556,7 @@ extern int __cdecl setegid(gid_t);
  * low-bit7 at least on cp1047 so YMMV
  */
 #define MAGIC		KSH_BEL	/* prefix for *?[!{,} during expand */
-#define ISMAGIC(c)	(ord(c) == ord(MAGIC))
+#define ISMAGIC(c)	(ord(c) == ORD(MAGIC))
 
 EXTERN const char *safe_prompt; /* safe prompt if PS1 substitution fails */
 
@@ -643,7 +643,7 @@ char *ucstrstr(char *, const char *);
 #endif
 #endif
 
-#if (!defined(MKSH_BUILDMAKEFILE4BSD) && !defined(MKSH_BUILDSH)) || (MKSH_BUILD_R != 562)
+#if (!defined(MKSH_BUILDMAKEFILE4BSD) && !defined(MKSH_BUILDSH)) || (MKSH_BUILD_R != 563)
 #error Must run Build.sh to compile this.
 extern void thiswillneverbedefinedIhope(void);
 int
@@ -804,7 +804,7 @@ struct sretrace_info;
 struct yyrecursive_state;
 
 EXTERN struct sretrace_info *retrace_info;
-EXTERN int subshell_nesting_type;
+EXTERN unsigned int subshell_nesting_type;
 
 extern struct env {
 	ALLOC_ITEM alloc_INT;	/* internal, do not touch */
@@ -1469,7 +1469,26 @@ EXTERN char ifs0;
 #define C_UNDER	CiUNDER		/* _	underscore */
 
 /* identity transform of octet */
-#define ord(c)		((unsigned int)(unsigned char)(c))
+#if defined(DEBUG) && defined(__GNUC__) && !defined(__ICC) && \
+    !defined(__INTEL_COMPILER) && !defined(__SUNPRO_C)
+extern unsigned int eek_ord;
+#define ORD(c)	((size_t)(c) > 0xFF ? eek_ord : \
+		    ((unsigned int)(unsigned char)(c)))
+#define ord(c)	__builtin_choose_expr(				\
+    __builtin_types_compatible_p(__typeof__(c), char) ||	\
+    __builtin_types_compatible_p(__typeof__(c), unsigned char),	\
+    ((unsigned int)(unsigned char)(c)), ({			\
+	size_t ord_c = (c);					\
+								\
+	if (ord_c > (size_t)0xFFU)				\
+		internal_errorf("%s:%d:ord(%zX)",		\
+		    __FILE__, __LINE__, ord_c);			\
+	((unsigned int)(unsigned char)(ord_c));			\
+}))
+#else
+#define ord(c)	((unsigned int)(unsigned char)(c))
+#define ORD(c)	ord(c) /* may evaluate arguments twice */
+#endif
 #if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
 EXTERN unsigned short ebcdic_map[256];
 EXTERN unsigned char ebcdic_rtt_toascii[256];
@@ -1492,20 +1511,22 @@ extern void ebcdic_init(void);
 #ifdef MKSH_EBCDIC
 #define ksh_isctrl(c)	(ord(c) < 0x40 || ord(c) == 0xFF)
 #else
-#define ksh_isctrl(c)	((ord(c) & 0x7F) < 0x20 || (c) == 0x7F)
+#define ksh_isctrl(c)	((ord(c) & 0x7F) < 0x20 || ord(c) == 0x7F)
 #endif
 /* new fast character classes */
 #define ctype(c,t)	tobool(ksh_ctypes[ord(c)] & (t))
+#define cinttype(c,t)	((c) >= 0 && (c) <= 0xFF ? \
+			tobool(ksh_ctypes[(unsigned char)(c)] & (t)) : false)
 /* helper functions */
 #define ksh_isdash(s)	tobool(ord((s)[0]) == '-' && ord((s)[1]) == '\0')
 /* invariant distance even in EBCDIC */
 #define ksh_tolower(c)	(ctype(c, C_UPPER) ? (c) - 'A' + 'a' : (c))
 #define ksh_toupper(c)	(ctype(c, C_LOWER) ? (c) - 'a' + 'A' : (c))
 /* strictly speaking rtt2asc() here, but this works even in EBCDIC */
-#define ksh_numdig(c)	(ord(c) - ord('0'))
+#define ksh_numdig(c)	(ord(c) - ORD('0'))
 #define ksh_numuc(c)	(rtt2asc(c) - rtt2asc('A'))
 #define ksh_numlc(c)	(rtt2asc(c) - rtt2asc('a'))
-#define ksh_toctrl(c)	asc2rtt(ord(c) == ord('?') ? 0x7F : rtt2asc(c) & 0x9F)
+#define ksh_toctrl(c)	asc2rtt(ord(c) == ORD('?') ? 0x7F : rtt2asc(c) & 0x9F)
 #define ksh_unctrl(c)	asc2rtt(rtt2asc(c) ^ 0x40U)
 
 /* Argument parsing for built-in commands and getopts command */
@@ -1599,7 +1620,7 @@ EXTERN mksh_ari_t x_lins E_INIT(24);
 #define shf_fileno(shf)		((shf)->fd)
 #define shf_setfileno(shf,nfd)	((shf)->fd = (nfd))
 #define shf_getc_i(shf)		((shf)->rnleft > 0 ? \
-				    (shf)->rnleft--, *(shf)->rp++ : \
+				    (shf)->rnleft--, (int)ord(*(shf)->rp++) : \
 				    shf_getchar(shf))
 #define shf_putc_i(c, shf)	((shf)->wnleft == 0 ? \
 				    shf_putchar((uint8_t)(c), (shf)) : \
@@ -2500,6 +2521,7 @@ void shprintf(const char *, ...)
     MKSH_A_FORMAT(__printf__, 1, 2);
 int can_seek(int);
 void initio(void);
+void recheck_ctype(void);
 int ksh_dup2(int, int, bool);
 short savefd(int);
 void restfd(int, int);
@@ -2758,8 +2780,8 @@ extern int tty_init_fd(void);	/* initialise tty_fd, tty_devtty */
 })
 int getdrvwd(char **, unsigned int);
 #else
-#define mksh_abspath(s)			(ord((s)[0]) == ord('/'))
-#define mksh_cdirsep(c)			(ord(c) == ord('/'))
+#define mksh_abspath(s)			(ord((s)[0]) == ORD('/'))
+#define mksh_cdirsep(c)			(ord(c) == ORD('/'))
 #define mksh_sdirsep(s)			strchr((s), '/')
 #define mksh_vdirsep(s)			vstrchr((s), '/')
 #endif
