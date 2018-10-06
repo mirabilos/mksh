@@ -182,9 +182,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.862 2018/05/08 17:37:37 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.865 2018/08/10 02:53:37 tg Exp $");
 #endif
-#define MKSH_VERSION "R56 2018/05/08"
+#define MKSH_VERSION "R56 2018/07/15"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -783,7 +783,7 @@ enum sh_flag {
 };
 
 #define Flag(f)	(shell_flags[(int)(f)])
-#define UTFMODE	Flag(FUNICODE)
+#define UTFMODE	Flag(FUNNYCODE)
 
 /*
  * parsing & execution environment
