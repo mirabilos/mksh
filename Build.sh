@@ -1,8 +1,8 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.732 2018/01/25 12:33:54 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.743 2019/08/15 02:15:13 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-#		2011, 2012, 2013, 2014, 2015, 2016, 2017
+#		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -25,8 +25,8 @@ srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.732 2018/01/25 12:33:54 tg Exp $'
 #
 # Used environment documentation is at the end of this file.
 
-LC_ALL=C
-export LC_ALL
+LC_ALL=C; LANGUAGE=C
+export LC_ALL; unset LANGUAGE
 
 case $ZSH_VERSION:$VERSION in
 :zsh*) ZSH_VERSION=2 ;;
@@ -234,7 +234,7 @@ vq() {
 rmf() {
 	for _f in "$@"; do
 		case $_f in
-		Build.sh|check.pl|check.t|dot.mkshrc|*.1|*.c|*.h|*.ico|*.opt) ;;
+		*.1|*.ico) ;;
 		*) rm -f "$_f" ;;
 		esac
 	done
@@ -418,6 +418,7 @@ ac_flags() {
 			#include <unistd.h>
 			int main(void) { return (isatty(0)); }
 		EOF
+		#'
 	fi
 	eval fv=\$HAVE_CAN_`upper $vn`
 	if test -n "$fl"; then
@@ -511,7 +512,7 @@ ebcdic=false
 for i
 do
 	case $last:$i in
-	c:combine|c:dragonegg|c:llvm|c:lto)
+	c:dragonegg|c:llvm)
 		cm=$i
 		last=
 		;;
@@ -521,10 +522,6 @@ do
 		;;
 	o:*)
 		optflags=$i
-		last=
-		;;
-	t:*)
-		tfn=$i
 		last=
 		;;
 	:-c)
@@ -571,9 +568,6 @@ do
 		;;
 	:+T)
 		textmode=0
-		;;
-	:-t)
-		last=t
 		;;
 	:-v)
 		echo "Build.sh $srcversion"
@@ -651,7 +645,7 @@ oswarn=
 ccpc=-Wc,
 ccpl=-Wl,
 tsts=
-ccpr='|| for _f in ${tcfn}*; do case $_f in Build.sh|check.pl|check.t|dot.mkshrc|*.1|*.c|*.h|*.ico|*.opt) ;; *) rm -f "$_f" ;; esac; done'
+ccpr='|| for _f in ${tcfn}*; do case $_f in *.1|*.ico) ;; *) rm -f "$_f" ;; esac; done'
 
 # Evil hack
 if test x"$TARGET_OS" = x"Android"; then
@@ -845,6 +839,11 @@ Linux)
 	;;
 LynxOS)
 	oswarn="; it has minor issues"
+	;;
+midipix)
+	add_cppflags -D_GNU_SOURCE
+	# their Perl (currently…) identifies as os:linux ☹
+	check_categories="$check_categories os:midipix"
 	;;
 MidnightBSD)
 	;;
@@ -1087,7 +1086,8 @@ test -z "$oswarn" || echo >&2 "
 Warning: mksh has not yet been ported to or tested on your
 operating system '$TARGET_OS'$oswarn. If you can provide
 a shell account to the developer, this may improve; please
-drop us a success or failure notice or even send in diffs.
+drop us a success or failure notice or even send in diffs,
+at the very least, complete logs (Build.sh + test.sh) will help.
 "
 $e "$bi$me: Building the MirBSD Korn Shell$ao $ui$dstversion$ao on $TARGET_OS ${TARGET_OSREV}..."
 
@@ -1229,9 +1229,8 @@ dmc)
 	;;
 gcc)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -v conftest.c $LIBS"
-	vv '|' 'echo `$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS \
-	    -dumpmachine` gcc`$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN \
-	    $LIBS -dumpversion`'
+	vv '|' 'eval echo "\`$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS -dumpmachine\`" \
+		 "gcc\`$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS -dumpversion\`"'
 	: "${HAVE_STRING_POOLING=i2}"
 	;;
 hpcc)
@@ -1375,14 +1374,14 @@ if ac_ifcpp 'if 0' compiler_fails '' \
 	case $ct in
 	dec)
 		CFLAGS="$CFLAGS ${ccpl}-non_shared"
-		ac_testn can_delexe compiler_fails 0 'for the -non_shared linker option' <<-EOF
+		ac_testn can_delexe compiler_fails 0 'for the -non_shared linker option' <<-'EOF'
 			#include <unistd.h>
 			int main(void) { return (isatty(0)); }
 		EOF
 		;;
 	dmc)
 		CFLAGS="$CFLAGS ${ccpl}/DELEXECUTABLE"
-		ac_testn can_delexe compiler_fails 0 'for the /DELEXECUTABLE linker option' <<-EOF
+		ac_testn can_delexe compiler_fails 0 'for the /DELEXECUTABLE linker option' <<-'EOF'
 			#include <unistd.h>
 			int main(void) { return (isatty(0)); }
 		EOF
@@ -1392,9 +1391,8 @@ if ac_ifcpp 'if 0' compiler_fails '' \
 		;;
 	esac
 	test 1 = $HAVE_CAN_DELEXE || CFLAGS=$save_CFLAGS
-	ac_testn compiler_still_fails '' 'if the compiler still does not fail correctly' <<-EOF
-	EOF
-	test 1 = $HAVE_COMPILER_STILL_FAILS && exit 1
+	ac_ifcpp 'if 0' compiler_still_fails \
+	    'if the compiler still does not fail correctly' && exit 1
 fi
 if ac_ifcpp 'ifdef __TINYC__' couldbe_tcc '!' compiler_known 0 \
     'if this could be tcc'; then
@@ -1707,7 +1705,7 @@ ac_test attribute_format '' 'for __attribute__((__format__))' <<-'EOF'
 	#undef fprintf
 	extern int fprintf(FILE *, const char *format, ...)
 	    __attribute__((__format__(__printf__, 2, 3)));
-	int main(int ac, char **av) { return (fprintf(stderr, "%s%d", *av, ac)); }
+	int main(int ac, char *av[]) { return (fprintf(stderr, "%s%d", *av, ac)); }
 	#endif
 EOF
 ac_test attribute_noreturn '' 'for __attribute__((__noreturn__))' <<-'EOF'
@@ -1732,7 +1730,7 @@ ac_test attribute_pure '' 'for __attribute__((__pure__))' <<-'EOF'
 	#include <unistd.h>
 	#undef __attribute__
 	int foo(const char *) __attribute__((__pure__));
-	int main(int ac, char **av) { return (foo(av[ac - 1]) + isatty(0)); }
+	int main(int ac, char *av[]) { return (foo(av[ac - 1]) + isatty(0)); }
 	int foo(const char *s) { return ((int)s[0]); }
 	#endif
 EOF
@@ -1744,7 +1742,7 @@ ac_test attribute_unused '' 'for __attribute__((__unused__))' <<-'EOF'
 	#else
 	#include <unistd.h>
 	#undef __attribute__
-	int main(int ac __attribute__((__unused__)), char **av
+	int main(int ac __attribute__((__unused__)), char *av[]
 	    __attribute__((__unused__))) { return (isatty(0)); }
 	#endif
 EOF
@@ -1862,22 +1860,22 @@ rmf lft*	# end of large file support test
 ac_test can_inttypes '!' stdint_h 1 "for standard 32-bit integer types" <<-'EOF'
 	#include <sys/types.h>
 	#include <stddef.h>
-	int main(int ac, char **av) { return ((uint32_t)(size_t)*av + (int32_t)ac); }
+	int main(int ac, char *av[]) { return ((uint32_t)(size_t)*av + (int32_t)ac); }
 EOF
 ac_test can_ucbints '!' can_inttypes 1 "for UCB 32-bit integer types" <<-'EOF'
 	#include <sys/types.h>
 	#include <stddef.h>
-	int main(int ac, char **av) { return ((u_int32_t)(size_t)*av + (int32_t)ac); }
+	int main(int ac, char *av[]) { return ((u_int32_t)(size_t)*av + (int32_t)ac); }
 EOF
 ac_test can_int8type '!' stdint_h 1 "for standard 8-bit integer type" <<-'EOF'
 	#include <sys/types.h>
 	#include <stddef.h>
-	int main(int ac, char **av) { return ((uint8_t)(size_t)av[ac]); }
+	int main(int ac, char *av[]) { return ((uint8_t)(size_t)av[ac]); }
 EOF
 ac_test can_ucbint8 '!' can_int8type 1 "for UCB 8-bit integer type" <<-'EOF'
 	#include <sys/types.h>
 	#include <stddef.h>
-	int main(int ac, char **av) { return ((u_int8_t)(size_t)av[ac]); }
+	int main(int ac, char *av[]) { return ((u_int8_t)(size_t)av[ac]); }
 EOF
 
 ac_test rlim_t <<-'EOF'
@@ -1947,7 +1945,11 @@ else
 		#define MKSH_INCLUDES_ONLY
 		#include "sh.h"
 		__RCSID("$srcversion");
-		int main(void) { printf("Hello, World!\\n"); return (isatty(0)); }
+		int main(void) {
+			struct timeval tv;
+			printf("Hello, World!\\n");
+			return (time(&tv.tv_sec));
+		}
 EOF
 	case $cm in
 	llvm)
@@ -2004,15 +2006,15 @@ ac_cppflags SYS_ERRLIST
 
 for what in name list; do
 	uwhat=`upper $what`
-	ac_testn sys_sig$what '' "the sys_sig${what}[] array" <<-EOF
-		extern const char * const sys_sig${what}[];
+	ac_testn sys_sig$what '' "the sys_sig$what[] array" <<-EOF
+		extern const char * const sys_sig$what[];
 		extern int isatty(int);
-		int main(void) { return (sys_sig${what}[0][0] + isatty(0)); }
+		int main(void) { return (sys_sig$what[0][0] + isatty(0)); }
 	EOF
-	ac_testn _sys_sig$what '!' sys_sig$what 0 "the _sys_sig${what}[] array" <<-EOF
-		extern const char * const _sys_sig${what}[];
+	ac_testn _sys_sig$what '!' sys_sig$what 0 "the _sys_sig$what[] array" <<-EOF
+		extern const char * const _sys_sig$what[];
 		extern int isatty(int);
-		int main(void) { return (_sys_sig${what}[0][0] + isatty(0)); }
+		int main(void) { return (_sys_sig$what[0][0] + isatty(0)); }
 	EOF
 	eval uwhat_v=\$HAVE__SYS_SIG$uwhat
 	if test 1 = "$uwhat_v"; then
@@ -2428,7 +2430,7 @@ addsrcs '!' HAVE_STRLCPY strlcpy.c
 addsrcs USE_PRINTF_BUILTIN printf.c
 test 1 = "$USE_PRINTF_BUILTIN" && add_cppflags -DMKSH_PRINTF_BUILTIN
 test 1 = "$HAVE_CAN_VERB" && CFLAGS="$CFLAGS -verbose"
-add_cppflags -DMKSH_BUILD_R=563
+add_cppflags -DMKSH_BUILD_R=571
 
 $e $bi$me: Finished configuration testing, now producing output.$ao
 
@@ -2613,8 +2615,8 @@ INDSRCS=	$extras
 NONSRCS_INST=	dot.mkshrc \$(MAN)
 NONSRCS_NOINST=	Build.sh Makefile Rebuild.sh check.pl check.t test.sh
 CC=		$CC
-CFLAGS=		$CFLAGS
 CPPFLAGS=	$CPPFLAGS
+CFLAGS=		$CFLAGS
 LDFLAGS=	$LDFLAGS
 LIBS=		$LIBS
 
@@ -2739,6 +2741,7 @@ HAVE_CAN_FSTACKPROTECTORALL	ac_flags
 ==== cpp definitions ====
 DEBUG				dont use in production, wants gcc, implies:
 DEBUG_LEAKS			enable freeing resources before exiting
+KSH_VERSIONNAME_VENDOR_EXT	when patching; space+plus+word (e.g. " +SuSE")
 MKSHRC_PATH			"~/.mkshrc" (do not change)
 MKSH_A4PB			force use of arc4random_pushb
 MKSH_ASSUME_UTF8		(0=disabled, 1=enabled; default: unset)
@@ -2776,7 +2779,7 @@ them, set to a value other than 0 or 1. Ensure /bin/ed is installed. For
 MKSH_SMALL but with Vi mode, add -DMKSH_S_NOVI=0 to CPPFLAGS as well.
 
 Normally, the following command is what you want to run, then:
-$ (sh Build.sh -r -c lto && ./test.sh -f) 2>&1 | tee log
+$ (sh Build.sh -r && ./test.sh -f) 2>&1 | tee log
 
 Copy dot.mkshrc to /etc/skel/.mkshrc; install mksh into $prefix/bin; or
 /bin; install the manpage, if omitting the -r flag a catmanpage is made
@@ -2785,6 +2788,6 @@ http://anonscm.debian.org/cgit/collab-maint/mksh.git/plain/debian/.mkshrc
 and put dot.mkshrc as /etc/mkshrc so users need not keep up their HOME.
 
 You may also want to install the lksh binary (also as /bin/sh) built by:
-$ CPPFLAGS="$CPPFLAGS -DMKSH_BINSHPOSIX" sh Build.sh -L -r -c lto
+$ CPPFLAGS="$CPPFLAGS -DMKSH_BINSHPOSIX" sh Build.sh -L -r
 
 EOD

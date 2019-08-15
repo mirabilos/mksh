@@ -2,7 +2,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+ *		 2019
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.204 2018/12/04 21:13:47 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.210 2019/08/02 19:27:15 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -445,7 +446,7 @@ execute(struct op * volatile t,
 		if (rv == ENOEXEC)
 			scriptexec(t, (const char **)up);
 		else
-			errorf(Tf_sD_s, t->str, cstrerror(rv));
+			errorfx(126, Tf_sD_s, t->str, cstrerror(rv));
 	}
  Break:
 	exstat = rv & 0xFF;
@@ -693,11 +694,9 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	/* shell built-in */
 	case CSHELL:
  do_call_builtin:
+		if (l_expand != l_assign)
+			l_assign->flags |= (tp->flag & NEXTLOC_BI);
 		rv = call_builtin(tp, (const char **)ap, null, resetspec);
-		if (resetspec && tp->val.f == c_shift) {
-			l_expand->argc = l_assign->argc;
-			l_expand->argv = l_assign->argv;
-		}
 		break;
 
 	/* function call */
@@ -826,7 +825,8 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 		if (!(tp->flag&ISSET)) {
 			if (tp->u2.errnov == ENOENT) {
 				rv = 127;
-				warningf(true, Tf_sD_s, cp, Tnot_found);
+				warningf(true, Tf_sD_s_s, cp,
+				    "inaccessible or", Tnot_found);
 			} else {
 				rv = 126;
 				warningf(true, Tf_sD_sD_s, cp, "can't execute",
@@ -868,7 +868,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
  Leave:
 	if (flags & XEXEC) {
 		exstat = rv & 0xFF;
-		unwind(LLEAVE);
+		unwind(LEXIT);
 	}
 	return (rv);
 }
@@ -1144,6 +1144,10 @@ builtin(const char *name, int (*func) (const char **))
 	case '^':
 		/* is declaration utility (POSIX: export, readonly) */
 		flag |= DECL_UTIL;
+		break;
+	case '#':
+		/* is set or shift */
+		flag |= NEXTLOC_BI;
 		break;
 	default:
 		goto flags_seen;

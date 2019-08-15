@@ -5,7 +5,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+ *		 2019
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -34,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.350 2018/10/30 17:10:15 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.352 2019/08/02 00:21:53 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -1329,6 +1330,39 @@ bi_errorf(const char *fmt, ...)
 	}
 }
 
+/*
+ * Used by functions called by builtins and not:
+ * identical to errorfx if first argument is nil,
+ * like bi_errorf storing the errorlevel into it otherwise
+ */
+void
+maybe_errorf(int *ep, int rc, const char *fmt, ...)
+{
+	va_list va;
+
+	/* debugging: note that stdout not valid */
+	shl_stdout_ok = false;
+
+	exstat = rc;
+
+	va_start(va, fmt);
+	vwarningf(VWARNINGF_ERRORPREFIX | VWARNINGF_FILELINE |
+	    (ep ? VWARNINGF_BUILTIN : 0), fmt, va);
+	va_end(va);
+
+	if (!ep)
+		goto and_out;
+	*ep = rc;
+
+	/* POSIX special builtins cause non-interactive shells to exit */
+	if (builtin_spec) {
+		builtin_argv0 = NULL;
+		/* may not want to use LERROR here */
+ and_out:
+		unwind(LERROR);
+	}
+}
+
 /* Called when something that shouldn't happen does */
 void
 internal_errorf(const char *fmt, ...)
@@ -2055,6 +2089,7 @@ void
 recheck_ctype(void)
 {
 	const char *ccp;
+	uint8_t old_utfmode = UTFMODE;
 
 	ccp = str_val(global("LC_ALL"));
 	if (ccp == null)
@@ -2072,7 +2107,7 @@ recheck_ctype(void)
 		UTFMODE = 1;
 #endif
 
-	if (Flag(FPOSIX))
+	if (Flag(FPOSIX) && UTFMODE && !old_utfmode)
 		warningf(true, "early locale tracking enabled UTF-8 mode while in POSIX mode, you are now noncompliant");
 }
 #endif
