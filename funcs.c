@@ -5,7 +5,8 @@
 
 /*-
  * Copyright (c) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
- *		 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017
+ *		 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
+ *		 2019
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -38,7 +39,7 @@
 #endif
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.355 2018/10/20 21:04:28 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.357 2019/08/02 19:27:15 tg Exp $");
 
 #if HAVE_KILLPG
 /*
@@ -129,8 +130,8 @@ const struct builtin mkshbuiltins[] = {
 	{"!realpath", c_realpath},
 	{"~rename", c_rename},
 	{"*=return", c_exitreturn},
-	{Tsgset, c_set},
-	{"*=shift", c_shift},
+	{Tsghset, c_set},
+	{"*=#shift", c_shift},
 	{Tgsource, c_dot},
 #if !defined(MKSH_UNEMPLOYED) && HAVE_GETSID
 	{Tsuspend, c_suspend},
@@ -1347,10 +1348,17 @@ c_bind(const char **wp)
 int
 c_shift(const char **wp)
 {
-	struct block *l = e->loc;
 	int n;
 	mksh_ari_t val;
 	const char *arg;
+	struct block *l = e->loc;
+
+	if ((l->flags & BF_RESETSPEC)) {
+		/* prevent pollution */
+		l->flags &= ~BF_RESETSPEC;
+		/* operate on parent environment */
+		l = l->next;
+	}
 
 	if (ksh_getopt(wp, &builtin_opt, null) == '?')
 		return (1);
@@ -1369,6 +1377,7 @@ c_shift(const char **wp)
 		bi_errorf(Tf_sD_s, Tbadnum, arg);
 		return (1);
 	}
+
 	if (l->argc < n) {
 		bi_errorf("nothing to shift");
 		return (1);
@@ -2231,7 +2240,13 @@ c_set(const char **wp)
 	int argi;
 	bool setargs;
 	struct block *l = e->loc;
-	const char **owp;
+
+	if ((l->flags & BF_RESETSPEC)) {
+		/* prevent pollution */
+		l->flags &= ~BF_RESETSPEC;
+		/* operate on parent environment */
+		l = l->next;
+	}
 
 	if (wp[1] == NULL) {
 		static const char *args[] = { Tset, "-", NULL };
@@ -2242,6 +2257,8 @@ c_set(const char **wp)
 		return (2);
 	/* set $# and $* */
 	if (setargs) {
+		const char **owp;
+
 		wp += argi - 1;
 		owp = wp;
 		/* save $0 */

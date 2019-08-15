@@ -182,9 +182,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.867 2018/10/30 17:10:16 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.873 2019/08/02 19:27:17 tg Exp $");
 #endif
-#define MKSH_VERSION "R56 2018/10/20"
+#define MKSH_VERSION "R57 2019/08/02"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -647,7 +647,7 @@ char *ucstrstr(char *, const char *);
 #endif
 #endif
 
-#if (!defined(MKSH_BUILDMAKEFILE4BSD) && !defined(MKSH_BUILDSH)) || (MKSH_BUILD_R != 563)
+#if (!defined(MKSH_BUILDMAKEFILE4BSD) && !defined(MKSH_BUILDSH)) || (MKSH_BUILD_R != 571)
 #error Must run Build.sh to compile this.
 extern void thiswillneverbedefinedIhope(void);
 int
@@ -999,8 +999,8 @@ EXTERN const char Tredirection_dup[] E_INIT("can't finish (dup) redirection");
 EXTERN const char Treal_sp2[] E_INIT(" real ");
 EXTERN const char Treq_arg[] E_INIT("requires an argument");
 EXTERN const char Tselect[] E_INIT("select");
-EXTERN const char Tsgset[] E_INIT("*=set");
 #define Tset (Tf_parm + 18)
+EXTERN const char Tsghset[] E_INIT("*=#set");
 #define Tsh (Tmksh + 2)
 #define TSHELL (TEXECSHELL + 4)
 #define Tshell (Ttoo_many_files + 23)
@@ -1160,8 +1160,8 @@ EXTERN const char T_devtty[] E_INIT("/dev/tty");
 #define Treal_sp2 " real "
 #define Treq_arg "requires an argument"
 #define Tselect "select"
-#define Tsgset "*=set"
 #define Tset "set"
+#define Tsghset "*=#set"
 #define Tsh "sh"
 #define TSHELL "SHELL"
 #define Tshell "shell"
@@ -1756,6 +1756,7 @@ EXTERN bool last_lookup_was_array;
 #define LOW_BI		BIT(14)	/* external utility overrides built-in one */
 #define DECL_UTIL	BIT(15)	/* is declaration utility */
 #define DECL_FWDR	BIT(16) /* is declaration utility forwarder */
+#define NEXTLOC_BI	BIT(17)	/* needs BF_RESETSPEC on e->loc */
 
 /*
  * Attributes that can be set by the user (used to decide if an unset
@@ -1824,6 +1825,8 @@ struct block {
 /* Values for struct block.flags */
 #define BF_DOGETOPTS	BIT(0)	/* save/restore getopts state */
 #define BF_STOPENV	BIT(1)	/* do not export further */
+/* BF_RESETSPEC and NEXTLOC_BI must be numerically identical! */
+#define BF_RESETSPEC	BIT(17)	/* use ->next for set and shift */
 
 /*
  * Used by ktwalk() and ktnext() routines.
@@ -1954,10 +1957,11 @@ struct ioword {
 #define IOSKIP		BIT(5)	/* <<-, skip ^\t* */
 #define IOCLOB		BIT(6)	/* >|, override -o noclobber */
 #define IORDUP		BIT(7)	/* x<&y (as opposed to x>&y) */
-#define IONAMEXP	BIT(8)	/* name has been expanded */
-#define IOBASH		BIT(9)	/* &> etc. */
-#define IOHERESTR	BIT(10)	/* <<< (here string) */
-#define IONDELIM	BIT(11)	/* null delimiter (<<) */
+#define IODUPSELF	BIT(8)	/* x>&x (as opposed to x>&y) */
+#define IONAMEXP	BIT(9)	/* name has been expanded */
+#define IOBASH		BIT(10)	/* &> etc. */
+#define IOHERESTR	BIT(11)	/* <<< (here string) */
+#define IONDELIM	BIT(12)	/* null delimiter (<<) */
 
 /* execute/exchild flags */
 #define XEXEC	BIT(0)		/* execute without forking */
@@ -2510,6 +2514,8 @@ void warningf(bool, const char *, ...)
     MKSH_A_FORMAT(__printf__, 2, 3);
 void bi_errorf(const char *, ...)
     MKSH_A_FORMAT(__printf__, 1, 2);
+void maybe_errorf(int *, int, const char *, ...)
+    MKSH_A_FORMAT(__printf__, 3, 4);
 #define errorfz()	errorf(NULL)
 #define errorfxz(rc)	errorfx((rc), NULL)
 #define bi_errorfz()	bi_errorf(NULL)

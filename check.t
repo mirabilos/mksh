@@ -1,8 +1,9 @@
-# $MirOS: src/bin/mksh/check.t,v 1.809 2018/10/20 18:48:26 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.822 2019/08/02 19:27:12 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-#	      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+#	      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+#	      2019
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -30,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	@(#)MIRBSD KSH R56 2018/10/20
+	@(#)MIRBSD KSH R57 2019/08/02
 description:
 	Check base version of full shell
 stdin:
@@ -39,7 +40,7 @@ name: KSH_VERSION
 category: !shell:legacy-yes
 ---
 expected-stdout:
-	@(#)LEGACY KSH R56 2018/10/20
+	@(#)LEGACY KSH R57 2019/08/02
 description:
 	Check base version of legacy shell
 stdin:
@@ -502,6 +503,9 @@ expected-stdout:
 name: arith-ternary-prec-1
 description:
 	Check precedence of ternary operator vs assignment
+	This test also fails if your GCC is buggy with LTO;
+	if so, remove “-c lto” from the Build.sh invocation
+	and retry; NEVER ship a binary that fails this test!
 stdin:
 	typeset -i x=2
 	y=$((1 ? 20 : x+=2))
@@ -1391,7 +1395,7 @@ need-pass: no
 # the mv command fails on Cygwin and z/OS
 # Hurd aborts the testsuite (permission denied)
 # QNX does not find subdir to cd into
-category: !os:cygwin,!os:gnu,!os:msys,!os:nto,!os:os390,!nosymlink
+category: !os:cygwin,!os:gnu,!os:midipix,!os:msys,!os:nto,!os:os390,!nosymlink
 file-setup: file 644 "x"
 	mkdir noread noread/target noread/target/subdir
 	ln -s noread link
@@ -1998,7 +2002,7 @@ expected-stdout:
 name: eglob-bad-1
 description:
 	Check that globbing isn't done when glob has syntax error
-category: !os:cygwin,!os:msys,!os:os2
+category: !os:cygwin,!os:midipix,!os:msys,!os:os2
 file-setup: file 644 "@(a[b|)c]foo"
 stdin:
 	echo @(a[b|)c]*
@@ -2490,7 +2494,7 @@ description:
 # breaks on Mac OSX (HFS+ non-standard UTF-8 canonical decomposition)
 # breaks on Cygwin 1.7 (files are now UTF-16 or something)
 # breaks on QNX 6.4.1 (says RT)
-category: !os:cygwin,!os:darwin,!os:msys,!os:nto,!os:os2,!os:os390
+category: !os:cygwin,!os:midipix,!os:darwin,!os:msys,!os:nto,!os:os2,!os:os390
 need-pass: no
 file-setup: file 644 "a�c"
 stdin:
@@ -7144,7 +7148,7 @@ stdin:
 	print =4
 	(exec lq)
 expected-stdout-pattern:
-	/=1\none\n=2\ntwo\n=3\n.*: ls: not found\n=4\ntf\n/
+	/=1\none\n=2\ntwo\n=3\n.*: ls: inaccessible or not found\n=4\ntf\n/
 ---
 name: exec-ksh88
 description:
@@ -7165,7 +7169,7 @@ stdin:
 	print =4
 	(exec lq)
 expected-stdout-pattern:
-	/=1\n.*: print: not found\n=2\n.*: foo: not found\n=3\n.*: ls: not found\n=4\ntf\n/
+	/=1\n.*: print: inaccessible or not found\n=2\n.*: foo: inaccessible or not found\n=3\n.*: ls: inaccessible or not found\n=4\ntf\n/
 ---
 name: xxx-what-do-you-call-this-1
 stdin:
@@ -7384,6 +7388,30 @@ expected-stdout:
 	include: 3
 	trap: 4
 	exit: 4
+---
+name: xxx-stat-1
+description:
+	Check that tests on files are consistent
+	(fails when run as root, unfortunately)
+category: disabled
+stdin:
+	mkdir a
+	echo x >a/b
+	test -e a/b; echo 1e $? .
+	test -f a/b; echo 1f $? .
+	chmod 0 a
+	test -e a/b; echo 2e $? .
+	test -f a/b; echo 2f $? .
+	chmod 700 a
+	test -e a/b; echo 3e $? .
+	test -f a/b; echo 3f $? .
+expected-stdout:
+	1e 0 .
+	1f 0 .
+	2e 1 .
+	2f 1 .
+	3e 0 .
+	3f 0 .
 ---
 name: xxx-clean-chars-1
 description:
@@ -7940,6 +7968,23 @@ expected-stdout:
 	xu: v: parameter null or not set
 	EXtrap
 	= noeval-undef 1 .
+---
+name: exit-trap-3
+description:
+	Check that the EXIT trap is run in many places, Debian #910276
+stdin:
+	fkt() {
+		trap -- "echo $1 >&2" EXIT
+	}
+	fkt shell_exit
+	$(fkt fn_exit)
+	$(trap -- "echo comsub_exit >&2" EXIT)
+	(trap -- "echo subshell_exit >&2" EXIT)
+expected-stderr:
+	fn_exit
+	comsub_exit
+	subshell_exit
+	shell_exit
 ---
 name: exit-trap-interactive
 description:
@@ -8632,7 +8677,7 @@ description:
 	note: Ultrix perl5 t4 returns 65280 (exit-code 255) and no text
 	XXX fails when LD_PRELOAD is set with -e and Perl chokes it (ASan)
 need-pass: no
-category: !os:cygwin,!os:msys,!os:ultrix,!os:uwin-nt,!smksh
+category: !os:cygwin,!os:midipix,!os:msys,!os:ultrix,!os:uwin-nt,!smksh
 env-setup: !FOO=BAR!
 stdin:
 	print '#!'"$__progname"'\nprint "1 a=$ENV{FOO}";' >t1
@@ -10801,6 +10846,43 @@ stdin:
 expected-stdout:
 	okay
 ---
+name: ulimit-3
+description:
+	Check that there are no duplicate limits (if this fails,
+	immediately contact with system information the developers)
+stdin:
+	[[ -z $(set | grep ^opt) ]]; mis=$?
+	set | grep ^opt | sed 's/^/unexpectedly set in environment: /'
+	opta='<used for showing all limits>'
+	optH='<used to set hard limits>'
+	optS='<used to set soft limits>'
+	ulimit -a >tmpf
+	set -o noglob
+	while IFS= read -r line; do
+		x=${line:1:1}
+		if [[ -z $x || ${#x}/${%x} != 1/1 ]]; then
+			print -r -- "weird line: $line"
+			(( mis |= 1 ))
+			continue
+		fi
+		set -- $line
+		nameref v=opt$x
+		if [[ -n $v ]]; then
+			print -r -- "duplicate -$x \"$2\" already seen as \"$v\""
+			(( mis |= 2 ))
+		fi
+		v=$2
+	done <tmpf
+	if (( mis & 2 )); then
+		echo failed
+	elif (( mis & 1 )); then
+		echo inconclusive
+	else
+		echo done
+	fi
+expected-stdout:
+	done
+---
 name: redir-1
 description:
 	Check some of the most basic invariants of I/O redirection
@@ -11263,6 +11345,34 @@ stdin:
 	./cld
 expected-stdout:
 	Fowl
+---
+name: fd-cloexec-3
+description:
+	Another check for close-on-exec
+stdin:
+	print '#!'"$__progname" >ts
+	cat >>ts <<'EOF'
+	s=ERR
+	read -rN-1 -u$1 s 2>/dev/null; e=$?
+	print -r -- "($1, $((!e)), $s)"
+	EOF
+	chmod +x ts
+	print foo >tx
+	runtest() {
+		s=$1; shift
+		print -r -- $("$__progname" "$@" -c "$s") "$@" .
+	}
+	runtest 'exec 3<tx; ./ts 3 3<&3; ./ts 3'
+	runtest 'exec 3<tx; ./ts 3 3<&3; ./ts 3' -o posix
+	runtest 'exec 3<tx; ./ts 3 3<&3; ./ts 3' -o sh
+	runtest 'exec 3<tx; ./ts 4 4<&3; ./ts 4 4<&3'
+	runtest 'exec 3<tx; ./ts 3 3<&3; ./ts 3 3<&3'
+expected-stdout:
+	(3, 1, foo) (3, 0, ERR) .
+	(3, 1, foo) (3, 1, ) -o posix .
+	(3, 1, foo) (3, 1, ) -o sh .
+	(4, 1, foo) (4, 1, ) .
+	(3, 1, foo) (3, 1, ) .
 ---
 name: comsub-1a
 description:
@@ -12591,7 +12701,7 @@ stdin:
 	echo =14
 	(mypid=$$; try mypid)
 	echo =15
-	) 2>&1 | sed -e 's/^[^]]*]//' -e 's/^[^:]*: *//'
+	) 2>&1 | sed -e 's/^[A-Za-z]://' -e 's/^[^]]*]//' -e 's/^[^:]*: *//'
 	exit ${PIPESTATUS[0]}
 expected-stdout:
 	y
@@ -13293,6 +13403,59 @@ expected-stdout:
 	before	0='swc' 1='一' 2='二'
 	after	0='swc' 1='二' 2=''
 	= done
+---
+name: command-set
+description:
+	Same but with set
+stdin:
+	showargs() { for s_arg in "$@"; do echo -n "<$s_arg> "; done; echo .; }
+	showargs 1 "$@"
+	set -- foo bar baz
+	showargs 2 "$@"
+	command set -- miau 'meow nyao'
+	showargs 3 "$@"
+expected-stdout:
+	<1> .
+	<2> <foo> <bar> <baz> .
+	<3> <miau> <meow nyao> .
+---
+name: command-readonly
+description:
+	These should not exit on error when prefixed
+stdin:
+	exec 2>/dev/null
+	"$__progname" -c 'readonly v; export v=foo || echo ok'
+	echo ef=$?
+	"$__progname" -c 'readonly v; command export v=foo || echo ok'
+	echo en=$?
+	"$__progname" -c 'readonly v; readonly v=foo || echo ok'
+	echo rf=$?
+	"$__progname" -c 'readonly v; command readonly v=foo || echo ok'
+	echo rn=$?
+expected-stdout:
+	ef=2
+	ok
+	en=0
+	rf=2
+	ok
+	rn=0
+---
+name: command-dot-regression
+description:
+	Check a regression in fixing the above does not appear
+stdin:
+	cat >test.mksh <<\EOF
+	set -- one two
+	shift
+	for s_arg in "$#" "$@"; do echo -n "<$s_arg> "; done; echo .
+	EOF
+	"$__progname" -c '. ./test.mksh' dummy oh dear this is not good
+	echo =
+	"$__progname" -c 'command . ./test.mksh' dummy oh dear this is not good
+expected-stdout:
+	<1> <two> .
+	=
+	<1> <two> .
 ---
 name: command-pvV-posix-priorities
 description:
