@@ -2,7 +2,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+ *		 2019
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.219 2018/01/14 01:29:47 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.221 2019/12/12 00:36:53 tg Exp $");
 
 /*
  * string expansion
@@ -497,10 +498,11 @@ expand(
 					    }
 					case ORD('/') | STYPE_AT:
 					case ORD('/'): {
-						char *s, *p, *d, *sbeg, *end;
-						char *pat = NULL, *rrep = null;
+						char *s, *p, *d, *sbeg;
+						char *pat = NULL, *rrep;
 						char fpat = 0, *tpat1, *tpat2;
-						char *ws, *wpat, *wrep;
+						char *ws, *wpat, *wrep, tch;
+						size_t rreplen;
 
 						s = ws = wdcopy(sp, ATEMP);
 						p = s + (wdscan(sp, ADELIM) - sp);
@@ -516,11 +518,17 @@ expand(
 						    ctype(s[1], C_SUB2))
 							fpat = s[1];
 						wpat = s + (fpat ? 2 : 0);
-						wrep = d ? p : NULL;
-						if (!(stype & STYPE_AT)) {
-							rrep = wrep ? evalstr(wrep,
-							    DOTILDE | DOSCALAR) :
-							    null;
+						if (!(wrep = d ? p : NULL)) {
+							rrep = null;
+							rreplen = 0;
+						} else if (!(stype & STYPE_AT)) {
+							rrep = evalstr(wrep,
+							    DOTILDE | DOSCALAR);
+							rreplen = strlen(rrep);
+						} else {
+							rrep = NULL;
+							/* shut up GCC */
+							rreplen = 0;
 						}
 
 						/* prepare string on which to work */
@@ -567,17 +575,17 @@ expand(
 						 */
 						if (!gmatchx(sbeg, tpat1, false))
 							goto end_repl;
-						end = strnul(s);
+						d = strnul(s);
 						/* now anchor the beginning of the match */
 						if (ord(fpat) != ORD('#'))
-							while (sbeg <= end) {
+							while (sbeg <= d) {
 								if (gmatchx(sbeg, tpat2, false))
 									break;
 								else
 									sbeg++;
 							}
 						/* now anchor the end of the match */
-						p = end;
+						p = d;
 						if (ord(fpat) != ORD('%'))
 							while (p >= sbeg) {
 								bool gotmatch;
@@ -590,22 +598,56 @@ expand(
 									break;
 								p--;
 							}
-						strndupx(end, sbeg, p - sbeg, ATEMP);
-						record_match(end);
-						afree(end, ATEMP);
-						if (stype & STYPE_AT) {
-							if (rrep != null)
-								afree(rrep, ATEMP);
-							rrep = wrep ? evalstr(wrep,
-							    DOTILDE | DOSCALAR) :
-							    null;
+
+						/* record partial string as match */
+						tch = *p;
+						*p = '\0';
+						record_match(sbeg);
+						*p = tch;
+						/* get replacement string, if necessary */
+						if ((stype & STYPE_AT) &&
+						    rrep != null) {
+							afree(rrep, ATEMP);
+							/* might access match! */
+							rrep = evalstr(wrep,
+							    DOTILDE | DOSCALAR);
+							rreplen = strlen(rrep);
 						}
-						strndupx(end, s, sbeg - s, ATEMP);
-						d = shf_smprintf(Tf_sss, end, rrep, p);
-						afree(end, ATEMP);
-						sbeg = d + (sbeg - s) + strlen(rrep);
-						afree(s, ATEMP);
-						s = d;
+
+						/*
+						 * string:
+						 * |--------|---------|-------\0
+						 * s  n1    sbeg  n2  p  n3   d
+						 *
+						 * replacement:
+						 *          |------------|
+						 *          rrep  rreplen
+						 */
+
+						/* move strings around and replace */
+						{
+							size_t n1 = sbeg - s;
+							size_t n2 = p - sbeg;
+							size_t n3 = d - p;
+							/* move part3 to the front, OR… */
+							if (rreplen < n2)
+								memmove(sbeg + rreplen,
+								    p, n3 + 1);
+							/* … adjust size, move to back */
+							if (rreplen > n2) {
+								s = aresize(s,
+								    n1 + rreplen + n3 + 1,
+								    ATEMP);
+								memmove(s + n1 + rreplen,
+								    s + n1 + n2,
+								    n3 + 1);
+							}
+							/* insert replacement */
+							if (rreplen)
+								memcpy(s + n1, rrep, rreplen);
+							/* continue after the place */
+							sbeg = s + n1 + rreplen;
+						}
 						if (stype & STYPE_AT) {
 							afree(tpat1, ATEMP);
 							afree(pat, ATEMP);

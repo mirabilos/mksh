@@ -3,7 +3,7 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019
  *	mirabilos <m@mirbsd.org>
  * Copyright (c) 2015
  *	Daniel Richard G. <skunk@iSKUNK.ORG>
@@ -32,7 +32,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.293 2018/08/10 02:53:35 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.296 2019/12/11 23:58:19 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -216,70 +216,85 @@ getoptions(void)
 void
 change_flag(enum sh_flag f, int what, bool newset)
 {
-	unsigned char oldval;
+	unsigned char oldval = Flag(f);
 	unsigned char newval = (newset ? 1 : 0);
 
 	if (f == FXTRACE) {
 		change_xtrace(newval, true);
 		return;
-	}
-	oldval = Flag(f);
-	Flag(f) = newval = (newset ? 1 : 0);
-#ifndef MKSH_UNEMPLOYED
-	if (f == FMONITOR) {
-		if (what != OF_CMDLINE && newval != oldval)
-			j_change();
-	} else
-#endif
-#ifndef MKSH_NO_CMDLINE_EDITING
-	  if ((
-#if !MKSH_S_NOVI
-	    f == FVI ||
-#endif
-	    f == FEMACS || f == FGMACS) && newval) {
-#if !MKSH_S_NOVI
-		Flag(FVI) =
-#endif
-		    Flag(FEMACS) = Flag(FGMACS) = 0;
-		Flag(f) = newval;
-	} else
-#endif
-	  if (f == FPRIVILEGED && oldval && !newval) {
-		/* Turning off -p? */
+	} else if (f == FPRIVILEGED) {
+		if (!oldval)
+			/* no getting back dropped privs */
+			return;
+		else if (!newval) {
+			/* turning off -p */
+			kshegid = kshgid;
+			ksheuid = kshuid;
+		} else if (oldval != 3)
+			/* nor going full sugid */
+			goto change_flag;
 
-		/*XXX this can probably be optimised */
-		kshegid = kshgid = getgid();
-		ksheuid = kshuid = getuid();
+		/* +++ set group IDs +++ */
 #if HAVE_SETRESUGID
-		DO_SETUID(setresgid, (kshegid, kshegid, kshegid));
-#if HAVE_SETGROUPS
-		/* setgroups doesn't EAGAIN on Linux */
-		setgroups(1, &kshegid);
-#endif
-		DO_SETUID(setresuid, (ksheuid, ksheuid, ksheuid));
+		DO_SETUID(setresgid, (kshegid, kshegid, kshgid));
 #else /* !HAVE_SETRESUGID */
-		/* setgid, setegid, seteuid don't EAGAIN on Linux */
+		/* setgid, setegid don't EAGAIN on Linux */
 		setgid(kshegid);
 #ifndef MKSH__NO_SETEUGID
 		setegid(kshegid);
-#endif
+#endif /* !MKSH__NO_SETEUGID */
+#endif /* !HAVE_SETRESUGID */
+
+		/* +++ wipe groups vector +++ */
+#if HAVE_SETGROUPS
+		/* setgroups doesn't EAGAIN on Linux */
+		setgroups(0, NULL);
+#endif /* HAVE_SETGROUPS */
+
+		/* +++ set user IDs +++ */
+#if HAVE_SETRESUGID
+		DO_SETUID(setresuid, (ksheuid, ksheuid, kshuid));
+#else /* !HAVE_SETRESUGID */
+		/* seteuid doesn't EAGAIN on Linux */
 		DO_SETUID(setuid, (ksheuid));
 #ifndef MKSH__NO_SETEUGID
 		seteuid(ksheuid);
-#endif
+#endif /* !MKSH__NO_SETEUGID */
 #endif /* !HAVE_SETRESUGID */
+
+		/* +++ privs changed +++ */
 	} else if ((f == FPOSIX || f == FSH) && newval) {
-		/* Turning on -o posix or -o sh? */
-		Flag(FBRACEEXPAND) = 0;
 		/* Turning on -o posix? */
-		if (f == FPOSIX) {
+		if (f == FPOSIX)
 			/* C locale required for compliance */
 			UTFMODE = 0;
-		}
-	} else if (f == FTALKING) {
+		/* Turning on -o posix or -o sh? */
+		Flag(FBRACEEXPAND) = 0;
+#ifndef MKSH_NO_CMDLINE_EDITING
+	} else if ((f == FEMACS ||
+#if !MKSH_S_NOVI
+	    f == FVI ||
+#endif
+	    f == FGMACS) && newval) {
+#if !MKSH_S_NOVI
+		Flag(FVI) = 0;
+#endif
+		Flag(FEMACS) = Flag(FGMACS) = 0;
+#endif
+	}
+
+ change_flag:
+	Flag(f) = newval;
+
+	if (f == FTALKING) {
 		/* Changing interactive flag? */
 		if ((what == OF_CMDLINE || what == OF_SET) && procpid == kshpid)
 			Flag(FTALKING_I) = newval;
+#ifndef MKSH_UNEMPLOYED
+	} else if (f == FMONITOR) {
+		if (what != OF_CMDLINE && newval != oldval)
+			j_change();
+#endif
 	}
 }
 
@@ -1674,14 +1689,13 @@ do_realpath(const char *upath)
 		if (getdrvwd(&ldest, ord(*upath)))
 			return (NULL);
 		/* A:foo -> A:/cwd/foo; A: -> A:/cwd */
-		ipath = shf_smprintf(Tf_sss, ldest,
-		    upath[2] ? "/" : "", upath + 2);
+		strpathx(ipath, ldest, upath + 2, 0);
 #endif
 	} else {
 		/* upath is a relative pathname, prepend cwd */
 		if ((tp = ksh_get_wd()) == NULL || !mksh_abspath(tp))
 			return (NULL);
-		ipath = shf_smprintf(Tf_sss, tp, "/", upath);
+		strpathx(ipath, tp, upath, 1);
 		afree(tp, ATEMP);
 	}
 
@@ -1783,7 +1797,7 @@ do_realpath(const char *upath)
  assemble_symlink:
 #endif
 			/* append rest of current input path to link target */
-			tp = shf_smprintf(Tf_sss, ldest, *ip ? "/" : "", ip);
+			strpathx(tp, ldest, ip, 0);
 			afree(ipath, ATEMP);
 			ip = ipath = tp;
 			if (!mksh_abspath(ipath)) {
@@ -2199,8 +2213,7 @@ c_cd(const char **wp)
 	tryp = NULL;
 	if (mksh_drvltr(dir) && !mksh_cdirsep(dir[2]) &&
 	    !getdrvwd(&tryp, ord(*dir))) {
-		dir = shf_smprintf(Tf_sss, tryp,
-		    dir[2] ? "/" : "", dir + 2);
+		strpathx(dir, tryp, dir + 2, 0);
 		afree(tryp, ATEMP);
 		afree(allocd, ATEMP);
 		allocd = dir;

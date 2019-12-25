@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.743 2019/08/15 02:15:13 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.746 2019/12/11 20:17:33 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019
@@ -1114,6 +1114,8 @@ ct="icc"
 ct="xlc"
 #elif defined(__SUNPRO_C)
 ct="sunpro"
+#elif defined(__neatcc__)
+ct="neatcc"
 #elif defined(__ACK__)
 ct="ack"
 #elif defined(__BORLANDC__)
@@ -1278,6 +1280,12 @@ msc)
 		vv '|' "$C89_LINKER /LINK >&2"
 		;;
 	esac
+	;;
+neatcc)
+	add_cppflags -DMKSH_DONT_EMIT_IDSTRING
+	add_cppflags -DMKSH_NO_SIGSETJMP
+	add_cppflags -Dsig_atomic_t=int
+	vv '|' "$CC"
 	;;
 nwcc)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS -version"
@@ -1523,6 +1531,7 @@ dmc)
 	ac_flags 1 schk "${ccpc}-s" 'for stack overflow checking'
 	;;
 gcc)
+	ac_flags 1 fnolto -fno-lto 'whether we can explicitly disable buggy GCC LTO' -fno-lto
 	# The following tests run with -Werror (gcc only) if possible
 	NOWARN=$DOWARN; phase=u
 	ac_flags 1 wnodeprecateddecls -Wno-deprecated-declarations
@@ -2770,6 +2779,7 @@ MKSH_S_NOVI=1			disable Vi editing mode (default if MKSH_SMALL)
 MKSH_TYPEDEF_SIG_ATOMIC_T	define to e.g. 'int' if sig_atomic_t is missing
 MKSH_TYPEDEF_SSIZE_T		define to e.g. 'long' if your OS has no ssize_t
 MKSH_UNEMPLOYED			disable job control (but not jobs/co-processes)
+USE_REALLOC_MALLOC		define as 0 to not use realloc as malloc
 
 === generic installation instructions ===
 

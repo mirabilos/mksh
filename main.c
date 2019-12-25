@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.352 2019/08/02 00:21:53 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.354 2019/12/11 23:58:19 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -650,7 +650,16 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 
 	if (Flag(FLOGIN))
 		include(MKSH_SYSTEM_PROFILE, 0, NULL, true);
-	if (!Flag(FPRIVILEGED)) {
+	if (Flag(FPRIVILEGED)) {
+		include(MKSH_SUID_PROFILE, 0, NULL, true);
+		/* note whether -p was enabled during startup */
+		if (Flag(FPRIVILEGED) == 1)
+			/* allow set -p to setuid() later */
+			Flag(FPRIVILEGED) = 3;
+		else
+			/* turn off -p if not set explicitly */
+			change_flag(FPRIVILEGED, OF_INTERNAL, false);
+	} else {
 		if (Flag(FLOGIN))
 			include(substitute("$HOME/.profile", 0), 0, NULL, true);
 		if (Flag(FTALKING)) {
@@ -658,13 +667,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 			if (cp[0] != '\0')
 				include(cp, 0, NULL, true);
 		}
-	} else {
-		include(MKSH_SUID_PROFILE, 0, NULL, true);
-		/* turn off -p if not set explicitly */
-		if (Flag(FPRIVILEGED) != 1)
-			change_flag(FPRIVILEGED, OF_INTERNAL, false);
 	}
-
 	if (restricted_shell) {
 		c_builtin(restr_com);
 		/* After typeset command... */
@@ -1462,7 +1465,7 @@ initio(void)
 	if ((lfp = getenv("SDMKSH_PATH")) == NULL) {
 		if ((lfp = getenv("HOME")) == NULL || !mksh_abspath(lfp))
 			errorf("can't get home directory");
-		lfp = shf_smprintf(Tf_sSs, lfp, "mksh-dbg.txt");
+		strpathx(lfp, lfp, "mksh-dbg.txt", 1);
 	}
 
 	if ((shl_dbg_fd = open(lfp, O_WRONLY | O_APPEND | O_CREAT, 0600)) < 0)
@@ -2024,7 +2027,7 @@ init_environ(void)
 	errno = 0;
 	if ((dent = readdir(dirp)) != NULL) {
 		if (skip_varname(dent->d_name, true)[0] == '\0') {
-			xp = shf_smprintf(Tf_sSs, MKSH_ENVDIR, dent->d_name);
+			strpathx(xp, MKSH_ENVDIR, dent->d_name, 1);
 			if (!(shf = shf_open(xp, O_RDONLY, 0, 0))) {
 				warningf(false,
 				    "cannot read environment %s from %s: %s",
