@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.211 2019/12/11 23:58:18 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.217 2019/12/30 04:18:50 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -464,14 +464,9 @@ execute(struct op * volatile t,
 		unwind(LEXIT);
 	if (rv != 0 && !(flags & XERROK) &&
 	    (xerrok == NULL || !*xerrok)) {
-		if (Flag(FERREXIT) & 0x80) {
-			/* inside eval */
-			Flag(FERREXIT) = 0;
-		} else {
-			trapsig(ksh_SIGERR);
-			if (Flag(FERREXIT))
-				unwind(LERROR);
-		}
+		trapsig(ksh_SIGERR);
+		if (Flag(FERREXIT))
+			unwind(LERREXT);
 	}
 	return (rv);
 }
@@ -629,12 +624,8 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	else {
 		/* create new variable/function block */
 		newblock();
-		/* ksh functions don't keep assignments, POSIX functions do. */
-		if (!resetspec && tp && tp->type == CFUNC &&
-		    !(tp->flag & FKSH))
-			type_flags = EXPORT;
-		else
-			type_flags = LOCAL|LOCAL_COPY|EXPORT;
+		/* all functions keep assignments */
+		type_flags = LOCAL|LOCAL_COPY|EXPORT;
 	}
 	l_assign = e->loc;
 	if (exec_clrenv)
@@ -802,6 +793,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 		switch (i) {
 		case LRETURN:
 		case LERROR:
+		case LERREXT:
 			rv = exstat & 0xFF;
 			break;
 		case LINTR:

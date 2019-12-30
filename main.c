@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.354 2019/12/11 23:58:19 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.360 2019/12/30 03:58:56 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -738,6 +738,7 @@ include(const char *name, int argc, const char **argv, bool intr_ok)
 		switch (i) {
 		case LRETURN:
 		case LERROR:
+		case LERREXT:
 			/* see below */
 			return (exstat & 0xFF);
 		case LINTR:
@@ -805,6 +806,8 @@ shell(Source * volatile s, volatile int level)
 	int i;
 
 	newenv(level == 2 ? E_EVAL : E_PARSE);
+	if (level == 2)
+		e->flags |= EF_IN_EVAL;
 	if (interactive)
 		really_exit = false;
 	switch ((i = kshsetjmp(e->jbuf))) {
@@ -812,18 +815,21 @@ shell(Source * volatile s, volatile int level)
 		break;
 	case LBREAK:
 	case LCONTIN:
-		if (level != 2) {
-			source = old_source;
-			quitenv(NULL);
-			internal_errorf(Tf_cant_s, Tshell,
-			    i == LBREAK ? Tbreak : Tcontinue);
+		/* assert: interactive == false */
+		source = old_source;
+		quitenv(NULL);
+		if (level == 2) {
+			/* keep on going */
+			unwind(i);
 			/* NOTREACHED */
 		}
-		/* assert: interactive == false */
-		/* FALLTHROUGH */
+		internal_errorf(Tf_cant_s, Tshell,
+		    i == LBREAK ? Tbreak : Tcontinue);
+		/* NOTREACHED */
 	case LINTR:
 		/* we get here if SIGINT not caught or ignored */
 	case LERROR:
+	case LERREXT:
 	case LSHELL:
 		if (interactive) {
 			if (i == LINTR)
@@ -854,6 +860,8 @@ shell(Source * volatile s, volatile int level)
 	case LRETURN:
 		source = old_source;
 		quitenv(NULL);
+		if (i == LERREXT && level == 2)
+			return (exstat & 0xFF);
 		/* keep on going */
 		unwind(i);
 		/* NOTREACHED */
@@ -913,8 +921,8 @@ shell(Source * volatile s, volatile int level)
  source_no_tree:
 		reclaim();
 	}
-	quitenv(NULL);
 	source = old_source;
+	quitenv(NULL);
 	return (exstat & 0xFF);
 }
 
@@ -923,36 +931,25 @@ shell(Source * volatile s, volatile int level)
 void
 unwind(int i)
 {
-	/*
-	 * This is a kludge. We need to restore everything that was
-	 * changed in the new environment, see cid 1005090337C7A669439
-	 * and 10050903386452ACBF1, but fail to even save things most of
-	 * the time. funcs.c:c_eval() changes FERREXIT temporarily to 0,
-	 * which needs to be restored thus (related to Debian #696823).
-	 * We did not save the shell flags, so we use a special or'd
-	 * value here... this is mostly to clean up behind *other*
-	 * callers of unwind(LERROR) here; exec.c has the regular case.
-	 */
-	if (Flag(FERREXIT) & 0x80) {
-		/* GNU bash does not run this trapsig */
-		trapsig(ksh_SIGERR);
-		Flag(FERREXIT) &= ~0x80;
-	}
+	/* during eval, skip FERREXIT trap */
+	if (i == LERREXT && (e->flags & EF_IN_EVAL))
+		goto defer_traps;
 
 	/* ordering for EXIT vs ERR is a bit odd (this is what AT&T ksh does) */
-	if (i == LEXIT || ((i == LERROR || i == LINTR) &&
+	if (i == LEXIT || ((i == LERROR || i == LERREXT || i == LINTR) &&
 	    sigtraps[ksh_SIGEXIT].trap &&
 	    (!Flag(FTALKING) || Flag(FERREXIT)))) {
 		++trap_nested;
 		runtrap(&sigtraps[ksh_SIGEXIT], trap_nested == 1);
 		--trap_nested;
 		i = LLEAVE;
-	} else if (Flag(FERREXIT) == 1 && (i == LERROR || i == LINTR)) {
+	} else if (Flag(FERREXIT) && (i == LERROR || i == LERREXT || i == LINTR)) {
 		++trap_nested;
 		runtrap(&sigtraps[ksh_SIGERR], trap_nested == 1);
 		--trap_nested;
 		i = LLEAVE;
 	}
+ defer_traps:
 
 	while (/* CONSTCOND */ 1) {
 		switch (e->type) {
@@ -995,8 +992,7 @@ newenv(int type)
 	ep->temps = NULL;
 	ep->yyrecursive_statep = NULL;
 	ep->type = type;
-	ep->flags = 0;
-	/* jump buffer is invalid because flags == 0 */
+	ep->flags = e->flags & EF_IN_EVAL;
 	e = ep;
 }
 
