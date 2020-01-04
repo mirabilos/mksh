@@ -11,7 +11,7 @@
 /*-
  * Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *	       2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *	       2019
+ *	       2019, 2020
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -172,6 +172,14 @@
 #define __IDSTRING_EXPAND(l,p)		__IDSTRING_CONCAT(l,p)
 #ifdef MKSH_DONT_EMIT_IDSTRING
 #define __IDSTRING(prefix, string)	/* nothing */
+#elif defined(__ELF__) && defined(__GNUC__) && \
+    !(defined(__GNUC__) && defined(__mips16)) && \
+    !defined(__llvm__) && !defined(__NWCC__) && !defined(NO_ASM)
+#define __IDSTRING(prefix, string)				\
+	__asm__(".section .comment"				\
+	"\n	.ascii	\"@(\"\"#)" #prefix ": \""		\
+	"\n	.asciz	\"" string "\""				\
+	"\n	.previous")
 #else
 #define __IDSTRING(prefix, string)				\
 	static const char __IDSTRING_EXPAND(__LINE__,prefix) []	\
@@ -183,9 +191,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.876 2019/12/11 23:58:20 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.879 2020/01/04 00:04:56 tg Exp $");
 #endif
-#define MKSH_VERSION "R57 2019/12/11"
+#define MKSH_VERSION "R57 2019/12/29"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -877,6 +885,7 @@ extern struct env {
 /* struct env.flag values */
 #define EF_BRKCONT_PASS	BIT(1)	/* set if E_LOOP must pass break/continue on */
 #define EF_FAKE_SIGDIE	BIT(2)	/* hack to get info from unwind to quitenv */
+#define EF_IN_EVAL	BIT(3)	/* inside an eval */
 
 /* Do breaks/continues stop at env type e? */
 #define STOP_BRKCONT(t)	((t) == E_NONE || (t) == E_PARSE || \
@@ -889,12 +898,13 @@ extern struct env {
 #define LRETURN	1	/* return statement */
 #define LEXIT	2	/* exit statement */
 #define LERROR	3	/* errorf() called */
-#define LLEAVE	4	/* untrappable exit/error */
+#define LERREXT 4	/* set -e caused */
 #define LINTR	5	/* ^C noticed */
 #define LBREAK	6	/* break statement */
 #define LCONTIN	7	/* continue statement */
 #define LSHELL	8	/* return to interactive shell() */
 #define LAEXPR	9	/* error in arithmetic expression */
+#define LLEAVE	10	/* untrappable exit/error */
 
 /* sort of shell global state */
 EXTERN pid_t procpid;		/* PID of executing process */

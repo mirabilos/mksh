@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.825 2019/12/11 20:54:42 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.828 2020/01/03 22:04:06 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R57 2019/12/11
+	KSH R57 2019/12/29
 description:
 	Check base version of full shell
 stdin:
@@ -7131,13 +7131,13 @@ stdin:
 name: exec-function-environment-1
 description:
 	Check assignments in function calls and whether they affect
-	the current execution environment (ksh93, SUSv4)
+	the current execution environment
 stdin:
 	f() { a=2; }; g() { b=3; echo y$c-; }; a=1 f; b=2; c=1 g
 	echo x$a-$b- z$c-
 expected-stdout:
 	y1-
-	x2-3- z1-
+	x-3- z-
 ---
 name: exec-modern-korn-shell
 description:
@@ -7776,6 +7776,32 @@ expected-stdout:
 	1 ok
 expected-exit: 1
 ---
+name: exit-err-10
+description:
+	Debian #269067 (cf. regression-38 but with eval)
+arguments: !-e!
+stdin:
+	eval false || true
+	echo = $? .
+expected-stdout:
+	= 0 .
+---
+name: exit-err-11
+description:
+	Fix -e inside eval, from Martijn Dekker; expected-stdout from ksh93
+stdin:
+	"$__progname" -c 'eval '\''echo ${-//[!eh]}; false; echo phantom e'\''; echo x$?'
+	echo = $?
+	"$__progname" -ec 'eval '\''echo ${-//[!eh]}; false; echo phantom e'\''; echo x$?'
+	echo = $?
+expected-stdout:
+	h
+	phantom e
+	x0
+	= 0
+	eh
+	= 1
+---
 name: exit-enoent-1
 description:
 	SUSv4 says that the shell should exit with 126/127 in some situations
@@ -7847,11 +7873,9 @@ expected-exit: 9
 ---
 name: exit-trap-2
 description:
-	Check that ERR and EXIT traps are run just like ksh93 does.
-	GNU bash does not run ERtrap in ±e eval-undef but runs it
-	twice (bug?) in +e eval-false, so does ksh93 (bug?), which
-	also has a bug to continue execution (echoing "and out" and
-	returning 0) in +e eval-undef.
+	Check that ERR and EXIT traps are run just like GNU bash does.
+	ksh93 runs ERtrap after “parameter null or not set” (which mksh
+	used to do) but (bug) continues “and out”, exit 0, in +e eval-undef.
 file-setup: file 644 "x"
 	v=; unset v
 	trap 'echo EXtrap' EXIT
@@ -7935,7 +7959,6 @@ expected-stdout:
 	= eval-false 1 .
 	and run ${v?}
 	x: v: parameter null or not set
-	ERtrap
 	EXtrap
 	= eval-undef 1 .
 	and run true
@@ -7957,12 +7980,12 @@ expected-stdout:
 	= eval-true 0 .
 	and run false
 	ERtrap
+	ERtrap
 	and out
 	EXtrap
 	= eval-false 0 .
 	and run ${v?}
 	x: v: parameter null or not set
-	ERtrap
 	EXtrap
 	= eval-undef 1 .
 	and run true
@@ -11253,7 +11276,7 @@ description:
 	(Inspired by PR 2450 on OpenBSD.) Calling
 		FOO=bar f
 	where f is a ksh style function, should not set FOO in the current
-	env. If f is a Bourne style function, FOO should be set. Furthermore,
+	env. If f is a Bourne style function, (new) also not. Furthermore,
 	the function should receive a correct value of FOO. However, differing
 	from oksh, setting FOO in the function itself must change the value in
 	setting FOO in the function itself should not change the value in
@@ -11299,7 +11322,7 @@ stdin:
 	if [ $? != 0 ]; then
 		exit 1
 	fi
-	if [ x$FOO != xfoo ]; then
+	if [ x$FOO != x ]; then
 		exit 1
 	fi
 	FOO=barbar
@@ -11314,7 +11337,7 @@ stdin:
 	if [ $? != 0 ]; then
 		exit 1
 	fi
-	if [ x$FOO != xfoo ]; then
+	if [ x$FOO != xbarbar ]; then
 		exit 1
 	fi
 ---
@@ -13290,7 +13313,7 @@ description:
 	Crashed during March 2011, fixed on vernal equinōx ☺
 category: os:mirbsd,os:openbsd
 stdin:
-	export MALLOC_OPTIONS=FGJPRSX
+	export MALLOC_OPTIONS=FGJRSX
 	"$__progname" -c 'x=$(tr z r <<<baz); echo $x'
 expected-stdout:
 	bar
