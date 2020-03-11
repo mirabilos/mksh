@@ -191,9 +191,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.880 2020/01/09 14:39:23 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.882 2020/03/10 23:51:35 tg Exp $");
 #endif
-#define MKSH_VERSION "R57 2019/12/29"
+#define MKSH_VERSION "R57 2020/03/10"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -1414,7 +1414,7 @@ EXTERN bool really_exit;
 #define CiCOLON	BIT(26)	/* :				*/
 #define CiEQUAL	BIT(27)	/* =				*/
 #define CiQUEST	BIT(28)	/* ?				*/
-#define CiBRACK	BIT(29)	/* ]				*/
+#define CiBRACK	BIT(29)	/* []				*/
 #define CiUNDER	BIT(30)	/* _				*/
 #define CiGRAVE	BIT(31)	/* `				*/
 /* out of space, but one for *@ would make sense, possibly others */
@@ -1428,8 +1428,8 @@ EXTERN char ifs0;
 
 /* external types */
 
-/* !%,-.0‥9:@A‥Z[]_a‥z	valid characters in alias names */
-#define C_ALIAS	(CiALIAS | CiBRACK | CiCOLON | CiDIGIT | CiLOWER | CiMINUS | CiOCTAL | CiPERCT | CiUNDER | CiUPPER)
+/* !%+,-.0‥9:@A‥Z[]_a‥z	valid characters in alias names */
+#define C_ALIAS	(CiALIAS | CiBRACK | CiCOLON | CiDIGIT | CiLOWER | CiMINUS | CiOCTAL | CiPERCT | CiPLUS | CiUNDER | CiUPPER)
 /* 0‥9A‥Za‥z		alphanumerical */
 #define C_ALNUM	(CiDIGIT | CiLOWER | CiOCTAL | CiUPPER)
 /* 0‥9A‥Z_a‥z		alphanumerical plus underscore (“word character”) */
