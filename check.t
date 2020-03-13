@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.830 2020/03/10 23:48:38 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.832 2020/03/13 20:22:41 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R57 2020/03/10
+	KSH R57 2020/03/13
 description:
 	Check base version of full shell
 stdin:
@@ -2747,7 +2747,7 @@ expected-stdout:
 	h\b
 	done
 ---
-name: heredoc-9a
+name: heredoc-9
 description:
 	Check that here strings work.
 stdin:
@@ -2762,6 +2762,19 @@ stdin:
 	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<"$(echo "foo bar")"
 	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<"A $(echo "foo bar") B"
 	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<\$b\$b$bar
+	fnord=42
+	bar="bar
+		 \$fnord baz"
+	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<$bar
+	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<< bar
+	echo $(tr r z <<<'bar' 2>/dev/null)
+	cat <<< "$(  :                                                             )aa"
+	IFS=$'\n'
+	x=(a "b c")
+	tr ac 12 <<< ${x[*]}
+	tr ac 34 <<< "${x[*]}"
+	tr ac 56 <<< ${x[@]}
+	tr ac 78 <<< "${x[@]}"
 expected-stdout:
 	sbb
 	sbb
@@ -2774,54 +2787,17 @@ expected-stdout:
 	A sbb one B
 	$o$oone
 		onm
----
-name: heredoc-9b
-description:
-	Check that a corner case of here strings works like bash
-stdin:
-	fnord=42
-	bar="bar
-		 \$fnord baz"
-	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<$bar
-expected-stdout:
-	one $sabeq onm
-category: bash
----
-name: heredoc-9c
-description:
-	Check that a corner case of here strings works like ksh93, zsh
-stdin:
-	fnord=42
-	bar="bar
-		 \$fnord baz"
-	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<<$bar
-expected-stdout:
 	one
 		 $sabeq onm
----
-name: heredoc-9d
-description:
-	Check another corner case of here strings
-stdin:
-	tr abcdefghijklmnopqrstuvwxyz nopqrstuvwxyzabcdefghijklm <<< bar
-expected-stdout:
 	one
----
-name: heredoc-9e
-description:
-	Check here string related regression with multiple iops
-stdin:
-	echo $(tr r z <<<'bar' 2>/dev/null)
-expected-stdout:
 	baz
----
-name: heredoc-9f
-description:
-	Check long here strings
-stdin:
-	cat <<< "$(  :                                                             )aa"
-expected-stdout:
 	aa
+	1
+	b 2
+	3
+	b 4
+	5 b 6
+	7 b 8
 ---
 name: heredoc-10
 description:
