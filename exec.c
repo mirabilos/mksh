@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.218 2020/03/13 20:22:44 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.223 2020/04/07 23:14:41 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -127,7 +127,7 @@ execute(struct op * volatile t,
 			timex_hook(t, &up);
 		ap = (const char **)up;
 		if (ap[0])
-			tp = findcom(ap[0], FC_BI|FC_FUNC);
+			tp = findcom(ap[0], FC_BI | FC_FUNC);
 	}
 	flags &= ~XTIME;
 
@@ -487,7 +487,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	static struct op texec;
 	int type_flags;
 	bool resetspec;
-	int fcflags = FC_BI|FC_FUNC|FC_PATH;
+	int fcflags = FC_BI | FC_FUNC | FC_PATH;
 	struct block *l_expand, *l_assign;
 	int optc;
 	const char *exec_argv0 = NULL;
@@ -524,7 +524,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	resetspec = false;
 	while (tp && tp->type == CSHELL) {
 		/* undo effects of command */
-		fcflags = FC_BI|FC_FUNC|FC_PATH;
+		fcflags = FC_BI | FC_FUNC | FC_PATH;
 		if (tp->val.f == c_builtin) {
 			if ((cp = *++ap) == NULL ||
 			    (!strcmp(cp, "--") && (cp = *++ap) == NULL)) {
@@ -573,7 +573,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 				/* command -vV or something */
 				break;
 			/* don't look for functions */
-			fcflags = FC_BI|FC_PATH;
+			fcflags = FC_BI | FC_PATH;
 			if (saw_p) {
 				if (Flag(FRESTRICTED)) {
 					warningf(true, Tf_sD_s,
@@ -603,8 +603,8 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 			    (tp->flag & LOWER_BI)) {
 				struct tbl *ext_cmd;
 
-				ext_cmd = findcom(tp->name, FC_PATH | FC_FUNC);
-				if (ext_cmd && (ext_cmd->type != CTALIAS ||
+				ext_cmd = findcom(tp->name, FC_FUNC | FC_PATH);
+				if (ext_cmd && (ext_cmd->type == CFUNC ||
 				    (ext_cmd->flag & ISSET)))
 					tp = ext_cmd;
 			}
@@ -614,7 +614,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 			break;
 		} else
 			break;
-		tp = findcom(ap[0], fcflags & (FC_BI|FC_FUNC));
+		tp = findcom(ap[0], fcflags & (FC_BI | FC_FUNC));
 	}
 	if (t->u.evalflags & DOTCOMEXEC)
 		flags |= XEXEC;
@@ -625,7 +625,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 		/* create new variable/function block */
 		newblock();
 		/* all functions keep assignments */
-		type_flags = LOCAL|LOCAL_COPY|EXPORT;
+		type_flags = LOCAL | LOCAL_COPY | EXPORT;
 	}
 	l_assign = e->loc;
 	if (exec_clrenv)
@@ -1303,10 +1303,10 @@ search_access(const char *fn, int mode)
 }
 
 #ifdef __OS2__
-/* check if path is something we want to find, adding executable extensions */
-#define search_access(fn, mode)	access_ex((search_access), (fn), (mode))
+/* check if path is something we want to find adding executable extensions */
+#define search_access(fn,mode)	access_ex((search_access), (fn), (mode))
 #else
-#define search_access(fn, mode)	(search_access)((fn), (mode))
+#define search_access(fn,mode)	(search_access)((fn), (mode))
 #endif
 
 /*
@@ -1676,7 +1676,7 @@ static const char *
 do_selectargs(const char **ap, bool print_menu)
 {
 	static const char *read_args[] = {
-		Tread, "-r", "REPLY", NULL
+		Tread, Tdr, TREPLY, NULL
 	};
 	char *s;
 	int i, argct;
@@ -1690,13 +1690,13 @@ do_selectargs(const char **ap, bool print_menu)
 		 *	- the user enters a blank line
 		 *	- the REPLY parameter is empty
 		 */
-		if (print_menu || !*str_val(global("REPLY")))
+		if (print_menu || !*str_val(global(TREPLY)))
 			pr_menu(ap);
 		shellf(Tf_s, str_val(global("PS3")));
 		if (call_builtin(findcom(Tread, FC_BI), read_args, Tselect,
 		    false))
 			return (NULL);
-		if (*(s = str_val(global("REPLY"))))
+		if (*(s = str_val(global(TREPLY))))
 			return ((getn(s, &i) && i >= 1 && i <= argct) ?
 			    ap[i - 1] : null);
 		print_menu = true;
@@ -1855,8 +1855,11 @@ dbteste_getopnd(Test_env *te, Test_op op, bool do_eval)
 	if (!do_eval)
 		return (null);
 
-	if (op == TO_STEQL || op == TO_STNEQ)
+	if (op == TO_STEQL || op == TO_STNEQ) {
 		flags |= DOPAT;
+		if (!Flag(FSH))
+			flags |= DODBMAGIC;
+	}
 
 	return (evalstr(s, flags));
 }
