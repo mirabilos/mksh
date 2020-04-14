@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.836 2020/04/12 20:44:51 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.838~ 2020/04/13 19:51:08 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R58 2020/04/07
+	KSH R59 2020/04/13
 description:
 	Check base version of full shell
 stdin:
@@ -7618,7 +7618,7 @@ stdin:
 	showargs 18 "$a"
 	set -A bla
 	typeset bla[1]=~:~
-	global gbl=~ g2=$1
+	typeset -g gbl=~ g2=$1
 	local lcl=~ l2=$1
 	readonly ro=~ r2=$1
 	showargs 19 "${bla[1]}" a=~ "$gbl" "$lcl" "$ro" "$g2" "$l2" "$r2"
@@ -13564,13 +13564,17 @@ description:
 stdin:
 	PATH=/bin:/usr/bin
 	alias foo="bar baz"
+	alias '[ab]=:'
 	bar() { :; }
-	for word in 'if' 'foo' 'bar' 'set' 'true'; do
+	for word in 'if' 'foo' 'bar' 'set' 'true' '[ab]'; do
 		command -v "$word"
 		command -pv "$word"
 		command -V "$word"
 		command -pV "$word"
 	done
+	# extra checks
+	alias '[ab]'
+	whence '[ab]'
 expected-stdout:
 	if
 	if
@@ -13592,6 +13596,12 @@ expected-stdout:
 	true
 	true is a shell builtin
 	true is a shell builtin
+	alias '[ab]'=:
+	alias '[ab]'=:
+	'[ab]' is an alias for :
+	'[ab]' is an alias for :
+	'[ab]'=:
+	:
 ---
 name: whence-preserve-tradition
 description:
