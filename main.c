@@ -6,7 +6,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *		 2019
+ *		 2019, 2020
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.362 2020/04/07 20:44:02 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.364 2020/04/13 17:04:14 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -66,7 +66,7 @@ static const char initsubs[] =
 
 static const char *initcoms[] = {
 	Ttypeset, Tdr, initvsn, NULL,
-	Ttypeset, "-x", "HOME", TPATH, TSHELL, NULL,
+	Ttypeset, Tdx, "HOME", TPATH, TSHELL, NULL,
 	Ttypeset, "-i10", "COLUMNS", "LINES", "SECONDS", "TMOUT", NULL,
 	Talias,
 	"integer=\\\\builtin typeset -i",
@@ -100,7 +100,6 @@ static struct env env;
 struct env *e = &env;
 
 /* compile-time assertions */
-#define cta(name,expr)	struct cta_ ## name { char t[(expr) ? 1 : -1]; }
 
 /* this one should be defined by the standard */
 cta(char_is_1_char, (sizeof(char) == 1) && (sizeof(signed char) == 1) &&
@@ -303,7 +302,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 
 	/* define built-in commands and see if we were called as one */
 	ktinit(APERM, &builtins,
-	    /* currently up to 54 builtins: 75% of 128 = 2^7 */
+	    /* currently up to 52 builtins: 75% of 128 = 2^7 */
 	    7);
 	for (i = 0; mkshbuiltins[i].name != NULL; i++)
 		if (!strcmp(ccp, builtin(mkshbuiltins[i].name,

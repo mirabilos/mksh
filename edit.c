@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.348 2020/04/07 20:10:06 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.350 2020/04/13 20:46:37 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -1143,6 +1143,7 @@ static struct x_defbindings const x_defbindings[] = {
 #ifndef MKSH_SMALL
 	/* more non-standard ones */
 	{ XFUNC_eval_region,		1,  CTRL_E	},
+	{ XFUNC_quote_region,		1,	'Q'	},
 	{ XFUNC_edit_line,		2,	'e'	}
 #endif
 };
@@ -5626,39 +5627,40 @@ x_eval_region_helper(const char *cmd, size_t len)
 		afree(wds, ATEMP);
 		strdupx(cp, cp, AEDIT);
 	} else
+		/* command cannot be parsed */
 		cp = NULL;
 	quitenv(NULL);
 	return (cp);
 }
 
 static int
-x_eval_region(int c MKSH_A_UNUSED)
+x_operate_region(char *(*helper)(const char *, size_t))
 {
-	char *evbeg, *evend, *cp;
+	char *rgbeg, *rgend, *cp;
 	size_t newlen;
 	/* only for LINE overflow checking */
 	size_t restlen;
 
 	if (xmp == NULL) {
-		evbeg = xbuf;
-		evend = xep;
+		rgbeg = xbuf;
+		rgend = xep;
 	} else if (xmp < xcp) {
-		evbeg = xmp;
-		evend = xcp;
+		rgbeg = xmp;
+		rgend = xcp;
 	} else {
-		evbeg = xcp;
-		evend = xmp;
+		rgbeg = xcp;
+		rgend = xmp;
 	}
 
 	x_e_putc2('\r');
 	x_clrtoeol(' ', false);
 	x_flush();
 	x_mode(false);
-	cp = x_eval_region_helper(evbeg, evend - evbeg);
+	cp = helper(rgbeg, rgend - rgbeg);
 	x_mode(true);
 
 	if (cp == NULL) {
-		/* command cannot be parsed */
+		/* error return from helper */
  x_eval_region_err:
 		x_e_putc2(KSH_BEL);
 		x_redraw('\r');
@@ -5666,20 +5668,49 @@ x_eval_region(int c MKSH_A_UNUSED)
 	}
 
 	newlen = strlen(cp);
-	restlen = xep - evend;
+	restlen = xep - rgend;
 	/* check for LINE overflow, until this is dynamically allocated */
-	if (evbeg + newlen + restlen >= xend)
+	if (rgbeg + newlen + restlen >= xend)
 		goto x_eval_region_err;
 
-	xmp = evbeg;
-	xcp = evbeg + newlen;
+	xmp = rgbeg;
+	xcp = rgbeg + newlen;
 	xep = xcp + restlen;
-	memmove(xcp, evend, restlen + /* NUL */ 1);
+	memmove(xcp, rgend, restlen + /* NUL */ 1);
 	memcpy(xmp, cp, newlen);
 	afree(cp, AEDIT);
 	x_adjust();
 	x_modified();
 	return (KSTD);
+}
+
+static int
+x_eval_region(int c MKSH_A_UNUSED)
+{
+	return (x_operate_region(x_eval_region_helper));
+}
+
+static char *
+x_quote_region_helper(const char *cmd, size_t len)
+{
+	char *s;
+	size_t newlen;
+	struct shf shf;
+
+	strndupx(s, cmd, len, ATEMP);
+	newlen = len < 256 ? 256 : 4096;
+	shf_sopen(alloc(newlen, AEDIT), newlen, SHF_WR | SHF_DYNAMIC, &shf);
+	shf.areap = AEDIT;
+	shf.flags |= SHF_ALLOCB;
+	print_value_quoted(&shf, s);
+	afree(s, ATEMP);
+	return (shf_sclose(&shf));
+}
+
+static int
+x_quote_region(int c MKSH_A_UNUSED)
+{
+	return (x_operate_region(x_quote_region_helper));
 }
 #endif /* !MKSH_SMALL */
 #endif /* !MKSH_NO_CMDLINE_EDITING */
