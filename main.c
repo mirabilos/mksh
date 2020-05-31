@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.364 2020/04/13 17:04:14 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.372 2020/05/16 22:51:24 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -242,6 +242,9 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 
 #ifdef __OS2__
 	os2_init(&argc, &argv);
+#define builtin_name_cmp stricmp
+#else
+#define builtin_name_cmp strcmp
 #endif
 
 	/* do things like getpgrp() et al. */
@@ -276,10 +279,11 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 			ccp += argi;
  begin_parsing_kshname:
 			argi = 0;
-			if (*ccp == '-')
-				++ccp;
 		}
 	}
+	Flag(FLOGIN) = (ord(*ccp) == ORD('-')) || (ord(*kshname) == ORD('-'));
+	if (ord(*ccp) == ORD('-'))
+		++ccp;
 	if (!*ccp)
 		ccp = empty_argv[0];
 
@@ -304,24 +308,32 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	ktinit(APERM, &builtins,
 	    /* currently up to 52 builtins: 75% of 128 = 2^7 */
 	    7);
-	for (i = 0; mkshbuiltins[i].name != NULL; i++)
-		if (!strcmp(ccp, builtin(mkshbuiltins[i].name,
-		    mkshbuiltins[i].func)))
-			Flag(FAS_BUILTIN) = 1;
+	for (i = 0; mkshbuiltins[i].name != NULL; ++i) {
+		const char *builtin_name;
 
-	if (!Flag(FAS_BUILTIN)) {
+		builtin_name = builtin(mkshbuiltins[i].name,
+		    mkshbuiltins[i].func);
+		if (!builtin_name_cmp(ccp, builtin_name)) {
+			/* canonicalise argv[0] */
+			ccp = builtin_name;
+			as_builtin = true;
+		}
+	}
+
+	if (!as_builtin) {
 		/* check for -T option early */
 		argi = parse_args(argv, OF_FIRSTTIME, NULL);
 		if (argi < 0)
 			return (1);
-		/* called as rsh, rmksh, -rsh, -rmksh, etc.? */
-		if (ord(*ccp) == ORD('r')) {
+		/* called as rsh, rmksh, -rsh, RKSH.EXE, etc.? */
+		if (ksh_eq(*ccp, 'R', 'r')) {
 			++ccp;
 			++restricted_shell;
 		}
 #if defined(MKSH_BINSHPOSIX) || defined(MKSH_BINSHREDUCED)
-		/* are we called as -sh or /bin/sh or so? */
-		if (!strcmp(ccp, "sh" MKSH_EXE_EXT)) {
+		/* are we called as -rsh or /bin/sh or SH.EXE or so? */
+		if (ksh_eq(ccp[0], 'S', 's') &&
+		    ksh_eq(ccp[1], 'H', 'h')) {
 			/* either also turns off braceexpand */
 #ifdef MKSH_BINSHPOSIX
 			/* enable better POSIX conformance */
@@ -468,7 +480,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	/* this to note if utf-8 mode is set on command line (see below) */
 	UTFMODE = 2;
 
-	if (!Flag(FAS_BUILTIN)) {
+	if (!as_builtin) {
 		argi = parse_args(argv, OF_CMDLINE, NULL);
 		if (argi < 0)
 			return (1);
@@ -478,7 +490,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	utf_flag = UTFMODE;
 	UTFMODE = 0;
 
-	if (Flag(FAS_BUILTIN)) {
+	if (as_builtin) {
 		/* auto-detect from environment variables, always */
 		utf_flag = 3;
 	} else if (Flag(FCOMMAND)) {
@@ -543,8 +555,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	}
 
 	/* this bizarreness is mandated by POSIX */
-	if (fstat(0, &s_stdin) >= 0 && S_ISCHR(s_stdin.st_mode) &&
-	    Flag(FTALKING))
+	if (Flag(FTALKING) && fstat(0, &s_stdin) >= 0 &&
+	    S_ISCHR(s_stdin.st_mode))
 		reset_nonblock(0);
 
 	/* initialise job control */
@@ -576,7 +588,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 #endif
 
 	l = e->loc;
-	if (Flag(FAS_BUILTIN)) {
+	if (as_builtin) {
 		l->argc = argc;
 		l->argv = argv;
 		l->argv[0] = ccp;
@@ -644,6 +656,21 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	errexit = Flag(FERREXIT);
 	Flag(FERREXIT) = 0;
 
+	/* save flags for "set +o" handling */
+	memcpy(baseline_flags, shell_flags, sizeof(shell_flags));
+	/* disable these because they have special handling */
+	baseline_flags[(int)FPOSIX] = 0;
+	baseline_flags[(int)FSH] = 0;
+	/* ensure these always show up setting, for FPOSIX/FSH */
+	baseline_flags[(int)FBRACEEXPAND] = 0;
+	baseline_flags[(int)FUNNYCODE] = 0;
+#if !defined(MKSH_SMALL) || defined(DEBUG)
+	/* mark as initialised */
+	baseline_flags[(int)FNFLAGS] = 1;
+#endif
+	if (as_builtin)
+		goto skip_startup_files;
+
 	/*
 	 * Do this before profile/$ENV so that if it causes problems in them,
 	 * user will know why things broke.
@@ -662,6 +689,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		else
 			/* turn off -p if not set explicitly */
 			change_flag(FPRIVILEGED, OF_INTERNAL, false);
+		/* track shell-imposed changes */
+		baseline_flags[(int)FPRIVILEGED] = Flag(FPRIVILEGED);
 	} else {
 		if (Flag(FLOGIN))
 			include(substitute("$HOME/.profile", 0), 0, NULL, true);
@@ -675,14 +704,20 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		c_builtin(restr_com);
 		/* After typeset command... */
 		Flag(FRESTRICTED) = 1;
+		/* track shell-imposed changes */
+		baseline_flags[(int)FRESTRICTED] = 1;
 	}
 	Flag(FERREXIT) = errexit;
 
 	if (Flag(FTALKING) && s)
 		hist_init(s);
-	else
+	else {
 		/* set after ENV */
+ skip_startup_files:
 		Flag(FTRACKALL) = 1;
+		/* track shell-imposed change (might lower surprise) */
+		baseline_flags[(int)FTRACKALL] = 1;
+	}
 
 	alarm_init();
 
@@ -701,7 +736,7 @@ main(int argc, const char *argv[])
 	struct block *l;
 
 	if ((rv = main_init(argc, argv, &s, &l)) == 0) {
-		if (Flag(FAS_BUILTIN)) {
+		if (as_builtin) {
 			rv = c_builtin(l->argv);
 		} else {
 			shell(s, 0);
