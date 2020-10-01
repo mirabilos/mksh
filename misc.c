@@ -3,7 +3,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
+ *		 2020
  *	mirabilos <m@mirbsd.org>
  * Copyright (c) 2015
  *	Daniel Richard G. <skunk@iSKUNK.ORG>
@@ -32,7 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.297 2020/04/07 11:56:46 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.302 2020/08/27 19:52:45 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -141,7 +142,8 @@ struct options_info {
 };
 
 static void options_fmt_entry(char *, size_t, unsigned int, const void *);
-static void printoptions(bool);
+static int printoptions(bool);
+static int printoption(size_t);
 
 /* format a single select menu item */
 static void
@@ -154,10 +156,32 @@ options_fmt_entry(char *buf, size_t buflen, unsigned int i, const void *arg)
 	    Flag(oi->opts[i]) ? "on" : "off");
 }
 
-static void
+static int
+printoption(size_t i)
+{
+	if (Flag(i) == baseline_flags[i])
+		return (0);
+	if (!OFN(i)[0]) {
+#if !defined(MKSH_SMALL) || defined(DEBUG)
+		bi_errorf(Tf_sd, "change in unnamed option", (int)i);
+#endif
+		return (1);
+	}
+	if (Flag(i) != 0 && Flag(i) != 1) {
+#if !defined(MKSH_SMALL) || defined(DEBUG)
+		bi_errorf(Tf_s_sD_s, Tdo, OFN(i), "not 0 or 1");
+#endif
+		return (1);
+	}
+	shprintf(Tf__s_s, Flag(i) ? Tdo : Tpo, OFN(i));
+	return (0);
+}
+
+static int
 printoptions(bool verbose)
 {
 	size_t i = 0;
+	int rv = 0;
 
 	if (verbose) {
 		size_t n = 0, len, octs = 0;
@@ -187,13 +211,17 @@ printoptions(bool verbose)
 	} else {
 		/* short version like AT&T ksh93 */
 		shf_puts(Tset, shl_stdout);
-		while (i < NELEM(options)) {
-			if (Flag(i) && OFN(i)[0])
-				shprintf(" -o %s", OFN(i));
+		shf_puts(To_o_reset, shl_stdout);
+		printoption(FSH);
+		printoption(FPOSIX);
+		while (i < FNFLAGS) {
+			if (i != FSH && i != FPOSIX)
+				rv |= printoption(i);
 			++i;
 		}
 		shf_putc('\n', shl_stdout);
 	}
+	return (rv);
 }
 
 char *
@@ -362,7 +390,8 @@ parse_args(const char **argv,
 #undef SHFLAGS_NOT_CMD
 	    ;
 	bool set;
-	const char *opts;
+	const char *opts = what == OF_CMDLINE || what == OF_FIRSTTIME ?
+	    cmd_opts : set_opts;
 	const char *array = NULL;
 	Getopt go;
 	size_t i;
@@ -370,22 +399,6 @@ parse_args(const char **argv,
 	bool sortargs = false;
 	bool fcompatseen = false;
 
-	if (what == OF_CMDLINE) {
-		const char *p = argv[0], *q;
-		/*
-		 * Set FLOGIN before parsing options so user can clear
-		 * flag using +l.
-		 */
-		if (*p != '-')
-			for (q = p; *q; )
-				if (mksh_cdirsep(*q++))
-					p = q;
-		Flag(FLOGIN) = (*p == '-');
-		opts = cmd_opts;
-	} else if (what == OF_FIRSTTIME) {
-		opts = cmd_opts;
-	} else
-		opts = set_opts;
 	ksh_getopt_reset(&go, GF_ERROR|GF_PLUSOPT);
 	while ((optc = ksh_getopt(argv, &go, opts)) != -1) {
 		set = tobool(!(go.info & GI_PLUS));
@@ -408,7 +421,15 @@ parse_args(const char **argv,
 				 * an option (ie, can't get here if what is
 				 * OF_CMDLINE).
 				 */
-				printoptions(set);
+#if !defined(MKSH_SMALL) || defined(DEBUG)
+				if (!set && !baseline_flags[(int)FNFLAGS]) {
+					bi_errorf(Tf_s_s, "too early",
+					    Tset_po);
+					return (-1);
+				}
+#endif
+				if (printoptions(set))
+					return (-1);
 				break;
 			}
 			i = option(go.optarg);
@@ -433,7 +454,23 @@ parse_args(const char **argv,
 				;
 			else if ((i != (size_t)-1) && (OFF(i) & what))
 				change_flag((enum sh_flag)i, what, set);
-			else {
+			else if (!strcmp(go.optarg, To_reset)) {
+#if !defined(MKSH_SMALL) || defined(DEBUG)
+				if (!baseline_flags[(int)FNFLAGS]) {
+					bi_errorf(Tf_ss, "too early",
+					    To_o_reset);
+					return (-1);
+				}
+#endif
+				/*
+				 * ordering, with respect to side effects,
+				 * was ensured above by printoptions
+				 */
+				for (i = 0; i < FNFLAGS; ++i)
+					if (Flag(i) != baseline_flags[i])
+						change_flag((enum sh_flag)i,
+						    what, baseline_flags[i]);
+			} else {
 				bi_errorf(Tf_sD_s, go.optarg,
 				    Tunknown_option);
 				return (-1);
@@ -1291,7 +1328,7 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 			if (go->flags & GF_ERROR)
 				bi_errorfz();
 		}
-		return ('?');
+		return (ORD('?'));
 	}
 	/**
 	 * : means argument must be present, may be part of option argument
@@ -1310,7 +1347,7 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 			if (optionsp[0] == ':') {
 				go->buf[0] = c;
 				go->optarg = go->buf;
-				return (':');
+				return (ORD(':'));
 			}
 			warningf(true, Tf_optfoo,
 			    (go->flags & GF_NONAME) ? "" : argv[0],
@@ -1318,7 +1355,7 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 			    c, Treq_arg);
 			if (go->flags & GF_ERROR)
 				bi_errorfz();
-			return ('?');
+			return (ORD('?'));
 		}
 		go->p = 0;
 	} else if (*o == ',') {
@@ -1346,7 +1383,7 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 				go->optarg = NULL;
 		}
 	}
-	return (c);
+	return (ord(c));
 }
 
 /*
@@ -1890,7 +1927,7 @@ do_realpath(const char *upath)
  *	- if file starts with '/', append file to result & set cdpathp to NULL
  *	- if file starts with ./ or ../ append cwd and file to result
  *	  and set cdpathp to NULL
- *	- if the first element of cdpathp doesnt start with a '/' xx or '.' xx
+ *	- if the first element of cdpathp doesn't start with a '/' xx or '.' xx
  *	  then cwd is appended to result.
  *	- the first element of cdpathp is appended to result
  *	- file is appended to result
@@ -1946,16 +1983,18 @@ make_path(const char *cwd, const char *file,
 			XcheckN(*xsp, xp, len);
 			memcpy(xp, cwd, len);
 			xp += len;
-			if (!mksh_cdirsep(cwd[len - 1]))
-				Xput(*xsp, xp, '/');
+			if (mksh_cdirsep(xp[-1]))
+				xp--;
+			*xp++ = '/';
 		}
 		*phys_pathp = Xlength(*xsp, xp);
 		if (use_cdpath && plen) {
 			XcheckN(*xsp, xp, plen);
 			memcpy(xp, plist, plen);
 			xp += plen;
-			if (!mksh_cdirsep(plist[plen - 1]))
-				Xput(*xsp, xp, '/');
+			if (mksh_cdirsep(xp[-1]))
+				xp--;
+			*xp++ = '/';
 			rval = 1;
 		}
 	}
@@ -2019,9 +2058,14 @@ simplify_path(char *p)
 	case '\\':
 #endif
 		/* exactly two leading slashes? (SUSv4 3.266) */
-		if (p[1] == p[0] && !mksh_cdirsep(p[2]))
+		if (p[1] == p[0] && !mksh_cdirsep(p[2])) {
 			/* keep them, e.g. for UNC pathnames */
+#ifdef MKSH_DOSPATH
+			*p++ = '/';
+#else
 			++p;
+#endif
+		}
 		needslash = true;
 		break;
 	default:
@@ -2152,26 +2196,26 @@ c_cd(const char **wp)
 	oldpwd_s = global(TOLDPWD);
 
 	if (!wp[0]) {
-		/* No arguments - go home */
+		/* no arguments; go home */
 		if ((dir = str_val(global("HOME"))) == null) {
 			bi_errorf("no home directory (HOME not set)");
 			return (2);
 		}
 	} else if (!wp[1]) {
-		/* One argument: - or dir */
-		strdupx(allocd, wp[0], ATEMP);
-		if (ksh_isdash((dir = allocd))) {
-			afree(allocd, ATEMP);
-			allocd = NULL;
+		/* one argument: - or dir */
+		if (ksh_isdash(wp[0])) {
 			dir = str_val(oldpwd_s);
 			if (dir == null) {
 				bi_errorf(Tno_OLDPWD);
 				return (2);
 			}
 			printpath = true;
+		} else {
+			strdupx(allocd, wp[0], ATEMP);
+			dir = allocd;
 		}
 	} else if (!wp[2]) {
-		/* Two arguments - substitute arg1 in PWD for arg2 */
+		/* two arguments; substitute arg1 in PWD for arg2 */
 		size_t ilen, olen, nlen, elen;
 		char *cp;
 
@@ -2180,10 +2224,9 @@ c_cd(const char **wp)
 			return (2);
 		}
 		/*
-		 * substitute arg1 for arg2 in current path.
-		 * if the first substitution fails because the cd fails
-		 * we could try to find another substitution. For now
-		 * we don't
+		 * Substitute arg1 for arg2 in current path. If the first
+		 * substitution fails because the cd fails we could try to
+		 * find another substitution. For now, we don't.
 		 */
 		if ((cp = strstr(current_wd, wp[0])) == NULL) {
 			bi_errorf(Tbadsubst);

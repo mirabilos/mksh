@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.842 2020/05/05 21:34:25 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.852 2020/10/01 22:53:18 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R59 2020/05/05
+	KSH R59 2020/10/01
 description:
 	Check base version of full shell
 stdin:
@@ -6109,7 +6109,7 @@ expected-stderr-pattern: /does\/not\/exist/
 ---
 name: regression-28
 description:
-	variable assignements not detected well
+	variable assignments not detected well
 stdin:
 	a.x=1 echo hi
 expected-exit: e != 0
@@ -6184,7 +6184,7 @@ expected-stdout:
 ---
 name: regression-35
 description:
-	Tempory files used for here-docs in functions get trashed after
+	Temporay files used for here-docs in functions get trashed after
 	the function is parsed (before it is executed)
 stdin:
 	f1() {
@@ -7457,7 +7457,7 @@ expected-stdout:
 name: xxx-param-subst-qmark-1
 description:
 	Check suppresion of error message with null string.  According to
-	POSIX, it shouldn't print the error as 'word' isn't ommitted.
+	POSIX, it shouldn't print the error as 'word' isn't omitted.
 	ksh88/93, Solaris /bin/sh and /usr/xpg4/bin/sh all print the error.
 stdin:
 	unset foo
@@ -8453,8 +8453,10 @@ description:
 stdin:
 	set -o braceexpand
 	set +o sh
-	[[ $(set +o) == *@(-o sh)@(| *) ]] && echo sh || echo nosh
-	[[ $(set +o) == *@(-o braceexpand)@(| *) ]] && echo brex || echo nobrex
+	[[ -o sh ]] && echo sh
+	[[ -o !sh ]] && echo nosh
+	[[ -o braceexpand ]] && echo brex
+	[[ -o !braceexpand ]] && echo nobrex
 	echo {a,b,c}
 	set +o braceexpand
 	echo {a,b,c}
@@ -8462,12 +8464,17 @@ stdin:
 	echo {a,b,c}
 	set -o sh
 	echo {a,b,c}
-	[[ $(set +o) == *@(-o sh)@(| *) ]] && echo sh || echo nosh
-	[[ $(set +o) == *@(-o braceexpand)@(| *) ]] && echo brex || echo nobrex
+	[[ -o sh ]] && echo sh
+	[[ -o !sh ]] && echo nosh
+	[[ -o braceexpand ]] && echo brex
+	[[ -o !braceexpand ]] && echo nobrex
 	set -o braceexpand
 	echo {a,b,c}
-	[[ $(set +o) == *@(-o sh)@(| *) ]] && echo sh || echo nosh
-	[[ $(set +o) == *@(-o braceexpand)@(| *) ]] && echo brex || echo nobrex
+	[[ -o sh ]] && echo sh
+	[[ -o !sh ]] && echo nosh
+	[[ -o braceexpand ]] && echo brex
+	[[ -o !braceexpand ]] && echo nobrex
+	[[ $(exec -a -set "$__progname" -o) = *login+(' ')on* ]]; echo $?
 expected-stdout:
 	nosh
 	brex
@@ -8480,44 +8487,110 @@ expected-stdout:
 	a b c
 	sh
 	brex
+	0
 ---
 name: sh-mode-2a
 description:
 	Check that posix or sh mode is *not* automatically turned on
 category: !binsh
 stdin:
-	ln -s "$__progname" ksh || cp "$__progname" ksh
-	ln -s "$__progname" sh || cp "$__progname" sh
-	ln -s "$__progname" ./-ksh || cp "$__progname" ./-ksh
-	ln -s "$__progname" ./-sh || cp "$__progname" ./-sh
-	for shell in {,-}{,k}sh; do
-		print -- $shell $(./$shell +l -c \
-		    '[[ $(set +o) == *"-o "@(sh|posix)@(| *) ]] && echo sh || echo nosh')
+	for shell in {,-}{,r}{,k,mk}sh {,-}{,R}{,K,MK}SH.EXE; do
+		ln -s "$__progname" ./$shell || cp "$__progname" ./$shell
+		print -- $shell $(./$shell +l -c '
+			[[ -o sh || -o posix ]] && echo sh
+			[[ -o !sh && -o !posix ]] && echo nosh
+			[[ -o restricted ]] && echo lim || echo ok
+		    ')
 	done
 expected-stdout:
-	sh nosh
-	ksh nosh
-	-sh nosh
-	-ksh nosh
+	sh nosh ok
+	ksh nosh ok
+	mksh nosh ok
+	rsh nosh lim
+	rksh nosh lim
+	rmksh nosh lim
+	-sh nosh ok
+	-ksh nosh ok
+	-mksh nosh ok
+	-rsh nosh lim
+	-rksh nosh lim
+	-rmksh nosh lim
+	SH.EXE nosh ok
+	KSH.EXE nosh ok
+	MKSH.EXE nosh ok
+	RSH.EXE nosh lim
+	RKSH.EXE nosh lim
+	RMKSH.EXE nosh lim
+	-SH.EXE nosh ok
+	-KSH.EXE nosh ok
+	-MKSH.EXE nosh ok
+	-RSH.EXE nosh lim
+	-RKSH.EXE nosh lim
+	-RMKSH.EXE nosh lim
 ---
 name: sh-mode-2b
 description:
 	Check that posix or sh mode *is* automatically turned on
 category: binsh
 stdin:
-	ln -s "$__progname" ksh || cp "$__progname" ksh
-	ln -s "$__progname" sh || cp "$__progname" sh
-	ln -s "$__progname" ./-ksh || cp "$__progname" ./-ksh
-	ln -s "$__progname" ./-sh || cp "$__progname" ./-sh
-	for shell in {,-}{,k}sh; do
-		print -- $shell $(./$shell +l -c \
-		    '[[ $(set +o) == *"-o "@(sh|posix)@(| *) ]] && echo sh || echo nosh')
+	for shell in {,-}{,r}{,k,mk}sh {,-}{,R}{,K,MK}SH.EXE; do
+		ln -s "$__progname" ./$shell || cp "$__progname" ./$shell
+		print -- $shell $(./$shell +l -c '
+			[[ -o sh || -o posix ]] && echo sh
+			[[ -o !sh && -o !posix ]] && echo nosh
+			[[ -o restricted ]] && echo lim || echo ok
+		    ')
 	done
 expected-stdout:
-	sh sh
-	ksh nosh
-	-sh sh
-	-ksh nosh
+	sh sh ok
+	ksh nosh ok
+	mksh nosh ok
+	rsh sh lim
+	rksh nosh lim
+	rmksh nosh lim
+	-sh sh ok
+	-ksh nosh ok
+	-mksh nosh ok
+	-rsh sh lim
+	-rksh nosh lim
+	-rmksh nosh lim
+	SH.EXE sh ok
+	KSH.EXE nosh ok
+	MKSH.EXE nosh ok
+	RSH.EXE sh lim
+	RKSH.EXE nosh lim
+	RMKSH.EXE nosh lim
+	-SH.EXE sh ok
+	-KSH.EXE nosh ok
+	-MKSH.EXE nosh ok
+	-RSH.EXE sh lim
+	-RKSH.EXE nosh lim
+	-RMKSH.EXE nosh lim
+---
+name: sh-options
+description:
+	Check that "set +o" DTRT per POSIX
+stdin:
+	t() {
+		[[ -o vi ]]; a=$?
+		[[ -o pipefail ]]; b=$?
+		echo $((++i)) $a $b .
+	}
+	set -e
+	set -o vi
+	set +o pipefail
+	set +e
+	t
+	x=$(set +o)
+	set +o vi
+	set -o pipefail
+	t
+	eval "$x"
+	t
+expected-stdout:
+	1 0 1 .
+	2 1 0 .
+	3 0 1 .
 ---
 name: pipeline-1
 description:
@@ -8780,9 +8853,10 @@ description:
 	XXX if the OS can already execute them, we lose
 	note: cygwin execve(2) doesn't return to us with ENOEXEC, we lose
 	note: Ultrix perl5 t4 returns 65280 (exit-code 255) and no text
+	note: A/UX perl5 returns 6400 (exit-code 25), passes #1-3
 	XXX fails when LD_PRELOAD is set with -e and Perl chokes it (ASan)
 need-pass: no
-category: !os:cygwin,!os:midipix,!os:msys,!os:ultrix,!os:uwin-nt,!smksh
+category: !os:aux,!os:cygwin,!os:midipix,!os:msys,!os:ultrix,!os:uwin-nt,!smksh
 env-setup: !FOO=BAR!
 stdin:
 	print '#!'"$__progname"'\nprint "1 a=$ENV{FOO}";' >t1
@@ -11416,13 +11490,11 @@ name: fd-cloexec-1
 description:
 	Verify that file descriptors > 2 are private for Korn shells
 	AT&T ksh93 does this still, which means we must keep it as well
-	XXX fails on some old Perl installations
-need-pass: no
 stdin:
 	cat >cld <<-EOF
 		#!$__perlname
-		open(my \$fh, ">&", 9) or die "E: open \$!";
-		syswrite(\$fh, "Fowl\\n", 5) or die "E: write \$!";
+		open(FH, ">&9") or die "E: open \$!";
+		syswrite(FH, "Fowl\\n", 5) or die "E: write \$!";
 	EOF
 	chmod +x cld
 	exec 9>&1
@@ -11435,13 +11507,11 @@ name: fd-cloexec-2
 description:
 	Verify that file descriptors > 2 are not private for POSIX shells
 	See Debian Bug #154540, Closes: #499139
-	XXX fails on some old Perl installations
-need-pass: no
 stdin:
 	cat >cld <<-EOF
 		#!$__perlname
-		open(my \$fh, ">&", 9) or die "E: open \$!";
-		syswrite(\$fh, "Fowl\\n", 5) or die "E: write \$!";
+		open(FH, ">&9") or die "E: open \$!";
+		syswrite(FH, "Fowl\\n", 5) or die "E: write \$!";
 	EOF
 	chmod +x cld
 	test -n "$POSH_VERSION" || set -o posix
@@ -13567,6 +13637,11 @@ description:
 	words, and command -p[vV] should find aliases, reserved words, and
 	builtins over external commands.
 stdin:
+	# extra checks prep
+	mkdir mrr
+	:>mrr/miau
+	chmod +x mrr/miau
+	# priorities
 	PATH=/bin:/usr/bin
 	alias foo="bar baz"
 	alias '[ab]=:'
@@ -13580,6 +13655,14 @@ stdin:
 	# extra checks
 	alias '[ab]'
 	whence '[ab]'
+	PATH=mrr
+	case $(command -v miau) {
+	(mrr/miau) echo fail ;;
+	(!(/*|[A-Z]:/*)) echo fail2 ;;
+	($PWD/mrr/miau) echo ok ;;
+	(/*|[A-Z]:/*) echo pwd bad? ;;
+	(*) echo not reached ;;
+	}
 expected-stdout:
 	if
 	if
@@ -13607,6 +13690,7 @@ expected-stdout:
 	'[ab]' is an alias for :
 	'[ab]'=:
 	:
+	ok
 ---
 name: whence-preserve-tradition
 description:

@@ -1,4 +1,4 @@
-.\" $MirOS: src/bin/mksh/mksh.1,v 1.489 2020/04/14 22:45:21 tg Exp $
+.\" $MirOS: src/bin/mksh/mksh.1,v 1.494 2020/10/01 22:39:57 tg Exp $
 .\" $OpenBSD: ksh.1,v 1.160 2015/07/04 13:27:04 feinerer Exp $
 .\"-
 .\" Copyright © 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
@@ -84,7 +84,7 @@
 .\" with -mandoc, it might implement .Mx itself, but we want to
 .\" use our own definition. And .Dd must come *first*, always.
 .\"
-.Dd $Mdocdate: April 14 2020 $
+.Dd $Mdocdate: October 1 2020 $
 .\"
 .\" Check which macro package we use, and do other -mdoc setup.
 .\"
@@ -270,7 +270,7 @@ option is on by default (see the
 command below).
 .It Fl l
 Login shell.
-If the basename the shell is called with (i.e. argv[0])
+If the name or basename the shell is called with (i.e. argv[0])
 starts with
 .Ql \-
 or if this option is used,
@@ -297,7 +297,9 @@ option is cleared automatically after processing the startup files.
 Restricted shell.
 A shell is
 .Dq restricted
-if the basename the shell is called with (i.e. argv[0]) starts with
+if the basename the shell is called with, after
+.Ql \-
+processing, starts with
 .Ql r
 or if this option is used.
 The following restrictions come into effect after the shell processes any
@@ -382,7 +384,7 @@ is determined as follows: if the
 .Fl c
 option is used and there is a non-option argument, it is used as the name;
 if commands are being read from a file, the file is used as the name;
-otherwise, the basename the shell was called with (i.e. argv[0]) is used.
+otherwise, the name the shell was called with (i.e. argv[0]) is used.
 .Pp
 The exit status of the shell is 127 if the command file specified on the
 command line could not be opened, or non-zero if a fatal syntax error
@@ -1412,7 +1414,7 @@ or
 where
 .Ar name
 is a parameter name.
-Substitutions of an an array in scalar context, i.e. without an
+Substitutions of an array in scalar context, i.e. without an
 .Ar expr
 in the latter form mentioned above, expand the element with the key
 .Dq 0 .
@@ -1801,12 +1803,11 @@ if it was invoked with the
 .Fl c
 option and arguments were given; otherwise the
 .Ar file
-argument, if it was supplied;
-or else the basename the shell was invoked with (i.e.\&
-.Li argv[0] ) .
+argument, if it was supplied; or else the name the shell was invoked with
+.Pq i.e.\& Li argv[0] .
 .Ev $0
-is also set to the name of the current script or
-the name of the current function, if it was defined with the
+is also set to the name of the current script,
+or to the name of the current function if it was defined with the
 .Ic function
 keyword (i.e. a Korn shell style function).
 .It Ev 1 No .. Ev 9
@@ -2024,7 +2025,7 @@ and
 .Xc
 See the end of the Emacs editing mode documentation for an example.
 .It Ev KSH_VERSION
-The name and version of the shell (read-only).
+The name (self-identification) and version of the shell (read-only).
 See also the version commands in
 .Sx Emacs editing mode
 and
@@ -4562,34 +4563,42 @@ Behave closer to the standards
 (see
 .Sx POSIX mode
 for details).
-Automatically enabled if the basename of the shell invocation begins with
+Automatically enabled if the shell invocation basename, after
+.Sq \-
+and
+.Sq r
+processing, begins with
 .Dq sh
-and this autodetection feature is compiled in (not in MirBSD; commonly used for
-.Nm lksh
-only).
+and
+.Pq often used for the Nm lksh No binary
+this autodetection feature is compiled in.
 As a side effect, setting this flag turns off the
 .Ic braceexpand
 and
 .Ic utf8\-mode
 flags, which can be turned back on manually, and
-.Pq unless both are enabled at the same time
+.Pq unless both are set in the same command
 .Ic sh
 mode.
 .It Fl o Ic sh
-Enable
+Enable kludge
 .Pa /bin/sh
-.Pq kludge
-mode (see
-.Sx SH mode ) .
-Automatically enabled if the basename of the shell invocation begins with
+compatibility mode (see
+.Sx SH mode
+below for details).
+Automatically enabled if the basename of the shell invocation, after
+.Sq \-
+and
+.Sq r
+processing, begins with
 .Dq sh
 and this autodetection feature is compiled in
 .Pq rather uncommon .
-As a side effect, setting this flag turns off
+As a side effect, setting this flag turns off the
 .Ic braceexpand
-mode, which can be turned back on manually, and
+flag, which can be turned back on manually, and
 .Ic posix
-mode (unless both are enabled at the same time).
+mode (unless both are set in the same command).
 .It Fl o Ic vi
 Enable
 .Xr vi 1 Ns -like
@@ -4623,12 +4632,10 @@ options (with single letter names) can be found in the parameter
 .Ic set Fl o
 with no option name will list all the options and whether each is on or off;
 .Ic set +o
-will print the long names of all options that are currently on.
-In a future version,
-.Ic set +o
-will behave
-.Tn POSIX
-compliant and print commands to restore the current options instead.
+prints a command to restore the current option set, using the internal
+.Ic set Fl o Ic .reset
+construct, which is an implementation detail; these commands are transient
+.Pq only valid within the current shell session .
 .Pp
 Remaining arguments, if any, are positional parameters and are assigned, in
 order, to the positional parameters (i.e. $1, $2, etc.).
@@ -5326,10 +5333,16 @@ Set the number of cached threads to
 Impose a size limit of
 .Ar n
 blocks on the size of core dumps.
+Silently ignored if the system does not support this limit.
 .It Fl d Ar n
 Limit the size of the data area to
 .Ar n
 kibibytes.
+.br
+On some systems, read-only maximum
+.Xr brk 2
+size minus
+.Li etext .
 .It Fl e Ar n
 Set the maximum niceness to
 .Ar n .
@@ -5362,6 +5375,7 @@ kibibytes on the amount of physical memory used.
 Impose a limit of
 .Ar n
 file descriptors that can be open at once.
+On some systems attempts to set are silently ignored.
 .It Fl O Ar n
 Set the number of AIO operations to
 .Ar n .
@@ -6057,11 +6071,18 @@ words.
 .Op Ar n
 .No \*(haXe
 .Xc
-Edit line
+Internally run the command
+.Ic fc \-e \&"${VISUAL:\-${EDITOR:\-vi}}" Fl \- Ar n
+.br
+on a temporary script file to interactively edit line
 .Ar n
-or the current line, if not specified, interactively.
-The actual command executed is
-.Ic fc \-e ${VISUAL:\-${EDITOR:\-vi}} Ar n .
+(if
+.Ar n
+is not specified, the current line); then, unless the editor invoked
+exits nonzero but even if the script was not changed, execute the
+resulting script as if typed on the command line; both the edited
+.Pq resulting
+and original lines are added onto history.
 .It end\-of\-history: \*(ha[\*(Gt
 Moves to the end of the history.
 .It end\-of\-line: \*(haE, ANSI-End, PC-End
@@ -6419,15 +6440,18 @@ is not specified, it goes to the most recent remembered line.
 .It Xo
 .Oo Ar n Oc Ns v
 .Xc
-Edit line
+Internally run the command
+.Ic fc \-e \&"${VISUAL:\-${EDITOR:\-vi}}" Fl \- Ar n
+.br
+on a temporary script file to interactively edit line
 .Ar n
-using the
-.Xr vi 1
-editor; if
+(if
 .Ar n
-is not specified, the current line is edited.
-The actual command executed is
-.Ic fc \-e ${VISUAL:\-${EDITOR:\-vi}} Ar n .
+is not specified, the current line); then, unless the editor invoked
+exits nonzero but even if the script was not changed, execute the
+resulting script as if typed on the command line; both the edited
+.Pq resulting
+and original lines are added onto history.
 .It * and \*(haX
 Command or file name expansion is applied to the current big-word (with an
 appended
@@ -7065,7 +7089,7 @@ for the in-memory portion of the history is slow, should use
 .Xr memmove 3 .
 .Pp
 This document attempts to describe
-.Nm mksh\ R59
+.Nm mksh\ R59c
 and up,
 .\" with vendor patches from insert-your-name-here,
 compiled without any options impacting functionality, such as
