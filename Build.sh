@@ -1,9 +1,9 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.763 2020/09/04 21:01:37 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.765 2021/01/24 19:56:19 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
-#		2020
+#		2020, 2021
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -499,6 +499,13 @@ x)
 	exit 1
 	;;
 esac
+srcdisp=`cd "$srcdir" && pwd` || srcdisp=
+test_n "$srcdisp" || srcdisp=$srcdir
+if test x"$srcdisp" = x"$curdir"; then
+	srcdisp=
+else
+	srcdisp=$srcdir/
+fi
 dstversion=`sed -n '/define MKSH_VERSION/s/^.*"\([^"]*\)".*$/\1/p' "$srcdir/sh.h"`
 add_cppflags -DMKSH_BUILDSH
 
@@ -2303,15 +2310,20 @@ ac_test sys_siglist_decl sys_siglist 0 'for declaration of sys_siglist[]' <<-'EO
 	int main(void) { return (sys_siglist[0][0] + isatty(0)); }
 EOF
 
-ac_test st_mtim '' 'for struct stat.st_mtim.tv_nsec' <<-'EOF'
-	#define MKSH_INCLUDES_ONLY
-	#include "sh.h"
-	int main(void) { struct stat sb; return (sizeof(sb.st_mtim.tv_nsec)); }
-EOF
-ac_test st_mtimensec '!' st_mtim 0 'for struct stat.st_mtimensec' <<-'EOF'
+ac_test st_mtimensec '' 'for struct stat.st_mtimensec' <<-'EOF'
 	#define MKSH_INCLUDES_ONLY
 	#include "sh.h"
 	int main(void) { struct stat sb; return (sizeof(sb.st_mtimensec)); }
+EOF
+ac_test st_mtimespec '!' st_mtimensec 0 'for struct stat.st_mtimespec.tv_nsec' <<-'EOF'
+	#define MKSH_INCLUDES_ONLY
+	#include "sh.h"
+	int main(void) { struct stat sb; return (sizeof(sb.st_mtimespec.tv_nsec)); }
+EOF
+ac_test st_mtim '!' st_mtimespec 0 'for struct stat.st_mtim.tv_nsec' <<-'EOF'
+	#define MKSH_INCLUDES_ONLY
+	#include "sh.h"
+	int main(void) { struct stat sb; return (sizeof(sb.st_mtim.tv_nsec)); }
 EOF
 
 #
@@ -2491,7 +2503,7 @@ addsrcs USE_PRINTF_BUILTIN printf.c
 addsrcs '!' MKSH_UNLIMITED ulimit.c
 
 test 1 = "$HAVE_CAN_VERB" && CFLAGS="$CFLAGS -verbose"
-add_cppflags -DMKSH_BUILD_R=593
+add_cppflags -DMKSH_BUILD_R=599
 
 $e $bi$me: Finished configuration testing, now producing output.$ao
 
@@ -2760,7 +2772,7 @@ $e Installing the shell:
 $e "# $i -c -s -o root -g bin -m 555 $tfn /bin/$tfn"
 if test $legacy = 0; then
 	$e "# grep -x /bin/$tfn /etc/shells >/dev/null || echo /bin/$tfn >>/etc/shells"
-	$e "# $i -c -o root -g bin -m 444 dot.mkshrc /usr/share/doc/mksh/examples/"
+	$e "# $i -c -o root -g bin -m 444 ${srcdisp}dot.mkshrc /usr/share/doc/mksh/examples/"
 fi
 $e
 $e Installing the manual:
@@ -2777,12 +2789,12 @@ if test -f mksh.cat1; then
 	    "/usr/share/man/cat1/mksh.0"
 	$e or
 fi
-$e "# $i -c -o root -g bin -m 444 lksh.1 mksh.1 /usr/share/man/man1/"
+$e "# $i -c -o root -g bin -m 444 ${srcdisp}lksh.1 ${srcdisp}mksh.1 /usr/share/man/man1/"
 $e
 $e Run the regression test suite: ./test.sh
-$e Please also read the sample file dot.mkshrc and the fine manual.
+$e Please also read the sample file ${srcdisp}dot.mkshrc and the fine manual.
 test -f FAQ.htm || \
-    $e Run FAQ2HTML.sh and place FAQ.htm into a suitable location as well.
+    $e Run ${srcdisp}FAQ2HTML.sh and place FAQ.htm into a suitable location as well.
 exit 0
 
 : <<'EOD'

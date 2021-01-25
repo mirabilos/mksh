@@ -1,9 +1,9 @@
 # $Id$
-# $MirOS: src/bin/mksh/dot.mkshrc,v 1.128 2020/04/13 18:39:03 tg Exp $
+# $MirOS: src/bin/mksh/dot.mkshrc,v 1.136 2021/01/24 20:38:30 tg Exp $
 #-
 # Copyright (c) 2002, 2003, 2004, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
-#		2020
+#		2020, 2021
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -38,24 +38,51 @@ function setenv {
 	fi
 }
 
+# internal helper function to cat all arguments if necessary
+function _dot_mkshrc_wrapped_cat {
+	\\builtin typeset fn=$1
+	\\builtin shift
+
+	if [[ $# = 0 || $#,$1 = 1,- ]]; then
+		"$fn"
+	else
+		\cat "$@" | "$fn"
+	fi
+}
+function _dot_mkshrc_cat_for_readN {
+	\\builtin typeset fn=$1
+	\\builtin shift
+
+	if (( $# )); then
+		\\builtin print -nr -- "$*" | "$fn"
+	elif [[ -t 0 ]]; then
+		\cat | "$fn"
+	else
+		"$fn"
+	fi
+}
+
 # pager (not control character safe)
-smores() (
-	\\builtin set +m
-	\\builtin cat "$@" |&
-	\\builtin trap "rv=\$?; \\\\builtin kill $! >/dev/null 2>&1; \\\\builtin exit \$rv" EXIT
-	while IFS= \\builtin read -pr line; do
+function smores {
+	\_dot_mkshrc_wrapped_cat _dot_mkshrc_smores "$@"
+}
+function _dot_mkshrc_smores {
+	\\builtin set +e
+	\\builtin typeset line llen curlin=0 x
+
+	while IFS= \\builtin read -r line; do
 		llen=${%line}
-		(( llen == -1 )) && llen=${#line}
+		(( llen != -1 )) || llen=${#line}
 		(( llen = llen ? (llen + COLUMNS - 1) / COLUMNS : 1 ))
 		if (( (curlin += llen) >= LINES )); then
 			\\builtin print -nr -- $'\e[7m--more--\e[0m'
-			\\builtin read -u1 || \\builtin exit $?
-			[[ $REPLY = [Qq]* ]] && \\builtin exit 0
+			\\builtin read -u1 x || \\builtin return $?
+			[[ $x != [Qq]* ]] || \\builtin return 0
 			curlin=$llen
 		fi
 		\\builtin print -r -- "$line"
 	done
-)
+}
 
 # customise your favourite editor here; the first one found is used
 for EDITOR in "${EDITOR:-}" jupp jstar mcedit ed vi; do
@@ -82,10 +109,10 @@ fi
 
 # prompts
 PS4='[$EPOCHREALTIME] '; PS1='#'; (( USER_ID )) && PS1='$'; PS1=$'\001\r''${|
-	\\builtin typeset e=$?
+	\\builtin typeset e=$? hn=${HOSTNAME:-nil}
 
-	(( e )) && REPLY+="$e|"
-	REPLY+=${USER}@${HOSTNAME%%.*}:
+	(( !!e )) || REPLY+="$e|"
+	REPLY+=${USER:-?}@${hn%%.*}:
 
 	\\builtin typeset d=${PWD:-?}/ p=~; [[ $p = ?(*/) ]] || d=${d/#$p\//\~/}
 	d=${d%/}; \\builtin typeset m=${%d} n p=...; (( m > 0 )) || m=${#d}
@@ -104,12 +131,13 @@ if \\builtin command -v hd >/dev/null; then
 	\:
 elif \\builtin command -v hexdump >/dev/null; then
 	function hd {
-		hexdump -e '"%08.8_ax  " 8/1 "%02X " " - " 8/1 "%02X "' \
+		\hexdump -e '"%08.8_ax  " 8/1 "%02X " " - " 8/1 "%02X "' \
 		    -e '"  |" "%_p"' -e '"|\n"' "$@"
 	}
 else
 	function hd {
-		\\builtin cat "$@" | hd_mksh
+		# cannot use _dot_mkshrc_wrapped_cat as hd_mksh sets stdin raw
+		\cat "$@" | \hd_mksh
 	}
 fi
 
@@ -118,7 +146,7 @@ function hd_mksh {
 	\\builtin typeset -Uui16 -Z11 pos=0
 	\\builtin typeset -Uui16 -Z5 hv=2147483647
 	\\builtin typeset dasc dn line i
-	\\builtin set +U
+	\\builtin set +Ue
 
 	while \\builtin read -arn 512 line; do
 		\\builtin typeset -i1 'line[*]'
@@ -219,6 +247,7 @@ function cd_csh {
 	\cd "$t"
 }
 function dirs {
+	\\builtin set +e
 	\\builtin typeset d dwidth
 	\\builtin typeset -i fl=0 fv=0 fn=0 cpos=0
 
@@ -343,9 +372,17 @@ function pushd {
 
 # base64 encoder and decoder, RFC compliant, NUL safe, not EBCDIC safe
 function Lb64decode {
-	\\builtin set +U
-	\\builtin typeset c s="$*" t
-	[[ -n $s ]] || { s=$(\\builtin cat; \\builtin print x); s=${s%x}; }
+	\\builtin set +Ue
+	\\builtin typeset c s t
+	if (( $# )); then
+		s="$*"
+	elif [[ -t 0 ]]; then
+		s=$(\cat || \\builtin exit $?; \\builtin print x) || \
+		    \\builtin return $?
+		s=${s%x}
+	else
+		\\builtin read -rN-1 s || \\builtin return $?
+	fi
 	\\builtin typeset -i i=0 j=0 n=${#s} p=0 v x
 	\\builtin typeset -i16 o
 
@@ -371,22 +408,20 @@ function Lb64decode {
 		}
 		t+=\\x${o#16#}
 		(( ++j & 4095 )) && \\builtin continue
-		\\builtin print -n $t
+		\\builtin print -n -- "$t"
 		t=
 	done
-	\\builtin print -n $t
+	\\builtin print -n -- "$t"
 }
 function Lb64encode {
-	\\builtin set +U
+	\_dot_mkshrc_cat_for_readN _dot_mkshrc_b64encode "$@"
+}
+function _dot_mkshrc_b64encode {
+	\\builtin set +Ue
 	\\builtin typeset c s t table
 	\\builtin set -A table -- A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
 	    a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9 + /
-	if (( $# )); then
-		\\builtin read -raN-1 s <<<"$*"
-		\\builtin unset s[${#s[*]}-1]
-	else
-		\\builtin read -raN-1 s
-	fi
+	\\builtin read -raN-1 s || \\builtin return $?
 	\\builtin typeset -i i=0 n=${#s[*]} v
 
 	while (( i < n )); do
@@ -403,10 +438,11 @@ function Lb64encode {
 			t+===
 		fi
 		if (( ${#t} == 76 || i >= n )); then
-			\\builtin print -r $t
+			\\builtin print -r -- "$t"
 			t=
 		fi
 	done
+	\:
 }
 
 # Better Avalanche for the Jenkins Hash
@@ -415,22 +451,22 @@ function Lbafh_init {
 	Lbafh_v=0
 }
 function Lbafh_add {
-	\\builtin set +U
+	\_dot_mkshrc_cat_for_readN _dot_mkshrc_bafh_add "$@"
+}
+function _dot_mkshrc_bafh_add {
+	\\builtin set +Ue
 	\\builtin typeset s
-	if (( $# )); then
-		\\builtin read -raN-1 s <<<"$*"
-		\\builtin unset s[${#s[*]}-1]
-	else
-		\\builtin read -raN-1 s
-	fi
+	\\builtin read -raN-1 s || \\builtin return $?
 	\\builtin typeset -i i=0 n=${#s[*]}
 
 	while (( i < n )); do
 		((# Lbafh_v = (Lbafh_v + s[i++] + 1) * 1025 ))
 		((# Lbafh_v ^= Lbafh_v >> 6 ))
 	done
+	\:
 }
 function Lbafh_finish {
+	\\builtin set +e
 	\\builtin typeset -Ui t
 
 	((# t = (((Lbafh_v >> 7) & 0x01010101) * 0x1B) ^ \
@@ -443,11 +479,20 @@ function Lbafh_finish {
 # strip comments (and leading/trailing whitespace if IFS is set) from
 # any file(s) given as argument, or stdin if none, and spew to stdout
 function Lstripcom {
+	\_dot_mkshrc_wrapped_cat _dot_mkshrc_stripcom "$@"
+}
+function _dot_mkshrc_stripcom {
+	\\builtin typeset line x
 	\\builtin set -o noglob
-	\\builtin cat "$@" | while \\builtin read _line; do
-		_line=${_line%%#*}
-		[[ -n $_line ]] && \\builtin print -r -- $_line
+	while \\builtin read -r line; do
+		while [[ $line = *\\ && $line != *'#'* ]] && \
+		    \\builtin read -r x; do
+			line=${line%\\}$x
+		done
+		line=${line%%#*}
+		[[ -z $line ]] || \\builtin print -r -- $line
 	done
+	\:
 }
 
 # toggle built-in aliases and utilities, and aliases and functions from mkshrc
@@ -479,7 +524,6 @@ function enable {
 	i_func[nfunc++]=break
 	# \\builtin cannot, by design, be overridden
 	i_func[nfunc++]=builtin
-	i_func[nfunc++]=cat
 	i_func[nfunc++]=cd
 	i_func[nfunc++]=chdir
 	i_func[nfunc++]=command
@@ -522,8 +566,6 @@ function enable {
 	i_func[nfunc++]=bind
 	i_func[nfunc++]=mknod
 	i_func[nfunc++]=printf
-	i_func[nfunc++]=sleep
-	i_func[nfunc++]=domainname
 	i_func[nfunc++]=extproc
 
 	# accumulate aliases from dot.mkshrc, in definition order
@@ -585,7 +627,7 @@ function enable {
 		(*)
 			\\builtin print -ru2 enable: usage: \
 			    "enable [-adnps] [-f filename] [name ...]"
-			return 2
+			\\builtin return 2
 			;;
 		}
 	done
