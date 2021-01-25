@@ -1,7 +1,7 @@
-# $MirOS: src/bin/mksh/Makefile,v 1.172 2020/10/31 05:17:46 tg Exp $
+# $MirOS: src/bin/mksh/Makefile,v 1.177 2021/01/24 22:45:23 tg Exp $
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-#		2011, 2012, 2013, 2014, 2015, 2016, 2017
+#		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2021
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -63,11 +63,11 @@ CPPFLAGS+=	-DMKSH_ASSUME_UTF8 -DMKSH_DISABLE_DEPRECATED \
 		-DHAVE_STRERROR=0 -DHAVE_STRSIGNAL=0 -DHAVE_STRLCPY=1 \
 		-DHAVE_FLOCK_DECL=1 -DHAVE_REVOKE_DECL=1 \
 		-DHAVE_SYS_ERRLIST_DECL=1 -DHAVE_SYS_SIGLIST_DECL=1 \
-		-DHAVE_ST_MTIM=0 -DHAVE_ST_MTIMENSEC=1 \
-		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=593
+		-DHAVE_ST_MTIMENSEC=1 -DHAVE_ST_MTIMESPEC=0 -DHAVE_ST_MTIM=1 \
+		-DHAVE_PERSISTENT_HISTORY=1 -DMKSH_BUILD_R=599
 CPPFLAGS+=	-D${${PROG:L}_tf:C/(Mir${MAN:E}{0,1}){2}/4/:S/x/mksh_BUILD/:U}
 CPPFLAGS+=	-I.
-COPTS+=		-std=c89 -Wall
+COPTS+=		-std=c89 -U__STRICT_ANSI__ -Wall
 .endif
 
 USE_PRINTF_BUILTIN?=	0
@@ -89,8 +89,8 @@ DEBUGFILE?=	No
 CPPFLAGS+=	-DDF=mksh_debugtofile
 .endif
 
-MANLINKS=	[ false pwd rksh sh sleep test true
-BINLINKS=	${MANLINKS} domainname echo kill
+MANLINKS=	[ pwd rksh sh test
+BINLINKS=	${MANLINKS} echo kill
 .for _i in ${BINLINKS}
 LINKS+=		${BINDIR}/${PROG} ${BINDIR}/${_i}
 .endfor
@@ -140,7 +140,13 @@ test-build-lksh: .PHONY
 	cd ${SRCDIR} && exec ${MAKE} lksh.cat1 test-build _TBF=-L
 
 bothmans: .PHONY
-	cd ${SRCDIR} && exec ${MAKE} MAN='lksh.1 mksh.1' __MANALL
+	cd ${SRCDIR} && exec ${MAKE} MAN='lksh.1 mksh.1' __MANALL faq
+
+faq: FAQ.htm
+
+CLEANFILES+=	FAQ.htm FAQ.tmp
+FAQ.htm: FAQ2HTML.sh mksh.faq sh.h
+	sh ${SRCDIR:Q}/FAQ2HTML.sh
 
 cleandir: clean-extra
 

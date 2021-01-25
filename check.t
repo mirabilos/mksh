@@ -1,9 +1,9 @@
-# $MirOS: src/bin/mksh/check.t,v 1.853 2020/10/31 03:53:03 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.859 2021/01/24 19:41:07 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #	      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
-#	      2019, 2020
+#	      2019, 2020, 2021
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R59 2020/10/31
+	KSH R59 2021/01/24
 description:
 	Check base version of full shell
 stdin:
@@ -150,9 +150,8 @@ name: selftest-direct-builtin-call
 description:
 	Check that direct builtin calls work
 stdin:
-	ln -s "$__progname" cat || cp "$__progname" cat
 	ln -s "$__progname" echo || cp "$__progname" echo
-	./echo -c 'echo  foo' | ./cat -u
+	./echo -c 'echo  foo'
 expected-stdout:
 	-c echo  foo
 ---
@@ -4786,7 +4785,7 @@ description:
 	'emulate sh' zsh has extra fields in
 	- a5ins (IFS_NWS unquoted $*)
 	- b5ins, matching mksh’s
-	!!WARNING!! more to come: http://austingroupbugs.net/view.php?id=888
+	!!WARNING!! more to come: https://www.austingroupbugs.net/view.php?id=888
 stdin:
 	"$__progname" -c 'pfb() { for s_arg in "$@"; do print -r -- "[$s_arg]"; done; }; pfn() { for s_arg in "$@"; do print -r -- "<$s_arg>"; done; };
 		IFS=; set -- "" 2 ""; pfb $*; x=$*; pfn "$x"'
@@ -4936,7 +4935,7 @@ expected-stdout:
 ---
 name: IFS-subst-8
 description:
-	http://austingroupbugs.net/view.php?id=221
+	https://www.austingroupbugs.net/view.php?id=221
 stdin:
 	n() { echo "$#"; }; n "${foo-$@}"
 expected-stdout:
@@ -4996,7 +4995,7 @@ expected-stdout:
 ---
 name: IFS-arith-1
 description:
-	http://austingroupbugs.net/view.php?id=832
+	https://www.austingroupbugs.net/view.php?id=832
 stdin:
 	${ZSH_VERSION+false} || emulate sh
 	${BASH_VERSION+set -o posix}
@@ -6184,7 +6183,7 @@ expected-stdout:
 ---
 name: regression-35
 description:
-	Temporay files used for here-docs in functions get trashed after
+	Temporary files used for heredocs in functions get trashed after
 	the function is parsed (before it is executed)
 stdin:
 	f1() {
@@ -6228,8 +6227,8 @@ description:
 	Machines with broken times() (reported by <sjg@void.zen.oz.au>)
 	time does not report correct real time
 stdin:
-	time sleep 1
-expected-stderr-pattern: !/^\s*0\.0[\s\d]+real|^\s*real[\s]+0+\.0/
+	time -p sleep 1
+expected-stderr-pattern: /^real +(?![0.]*$)[0-9]+(?:\.[0-9]+)?$/m
 ---
 name: regression-38
 description:
@@ -6799,19 +6798,6 @@ stdin:
 		time
 	}
 ---
-name: regression-65
-description:
-	check for a regression with sleep builtin and signal mask
-category: !nojsig
-time-limit: 5
-stdin:
-	sleep 1
-	echo blub |&
-	while read -p line; do :; done
-	echo ok
-expected-stdout:
-	ok
----
 name: regression-66
 description:
 	Check that quoting is sane
@@ -6971,7 +6957,7 @@ expected-stderr-pattern:
 ---
 name: readonly-1
 description:
-	http://austingroupbugs.net/view.php?id=367 for export
+	https://www.austingroupbugs.net/view.php?id=367 for export
 stdin:
 	"$__progname" -c 'readonly foo; export foo=a; echo $?' || echo aborted, $?
 expected-stdout:
@@ -6990,7 +6976,7 @@ expected-stdout:
 ---
 name: readonly-2b
 description:
-	http://austingroupbugs.net/view.php?id=367 for getopts
+	https://www.austingroupbugs.net/view.php?id=367 for getopts
 stdin:
 	"$__progname" -c 'readonly c; set -- -a b; getopts a c; echo $? $c .' || echo aborted, $?
 expected-stdout:
@@ -7000,7 +6986,7 @@ expected-stderr-pattern:
 ---
 name: readonly-3
 description:
-	http://austingroupbugs.net/view.php?id=367 for read
+	https://www.austingroupbugs.net/view.php?id=367 for read
 stdin:
 	echo x | "$__progname" -c 'read s; echo $? $s .' || echo aborted, $?
 	echo y | "$__progname" -c 'readonly s; read s; echo $? $s .' || echo aborted, $?
@@ -7130,7 +7116,7 @@ expected-stdout:
 ---
 name: xxx-exec-environment-1
 description:
-	Check to see if exec sets it's environment correctly
+	Check to see if exec sets its environment correctly
 stdin:
 	print '#!'"$__progname"'\nunset RANDOM\nexport | while IFS= read -r' \
 	    'RANDOM; do eval '\''print -r -- "$RANDOM=$'\''"$RANDOM"'\'\"\'\; \
@@ -7162,47 +7148,73 @@ expected-stdout:
 	y1-
 	x-3- z-
 ---
-name: exec-modern-korn-shell
+name: exec-execs
+description:
+	Ensure that exec never returns
+need-ctty: yes
+env-setup: !ENV=./envf!
+file-setup: file 644 "envf"
+	PS1=X
+arguments: !-i!
+stdin:
+	oldPATH=$PATH
+	PATH=$PWD
+	exec bla
+	PATH=$oldPATH
+	echo fail
+expected-stderr-pattern:
+	/X+.*: bla: (?:inaccessible or )?not found\n/
+expected-exit: 127
+---
+name: exec-modern
 description:
 	Check that exec can execute any command that makes it
 	through syntax and parser
 stdin:
-	print '#!'"$__progname"'\necho tf' >lq
-	chmod +x lq
+	echo '#!'"$__progname" >f
+	echo 'echo >&3 FAIL' >>f
+	echo '#!'"$__progname" >lq
+	echo 'echo tf' >>lq
+	chmod +x lq f
 	PATH=$PWD
-	exec 2>&1
-	foo() { print two; }
-	print =1
-	(exec print one)
-	print =2
-	(exec foo)
-	print =3
-	(exec ls)
-	print =4
-	(exec lq)
+	exec 3>&2 2>&1
+	foo() { echo two; }
+	echo =1
+	(exec echo one; ./f)
+	echo =2
+	(exec foo; ./f)
+	echo =3
+	(exec ls; ./f)
+	echo =4
+	(exec lq; ./f)
 expected-stdout-pattern:
-	/=1\none\n=2\ntwo\n=3\n.*: ls: inaccessible or not found\n=4\ntf\n/
+	/=1\none\n=2\ntwo\n=3\n.*: ls: (?:inaccessible or )?not found\n=4\ntf\n/
 ---
 name: exec-ksh88
 description:
 	Check that exec only executes after a PATH search
+	(POSIX Issue 8 uses utility ipv command for the synopsis)
+	cf. https://www.austingroupbugs.net/view.php?id=1157
 arguments: !-o!posix!
 stdin:
-	print '#!'"$__progname"'\necho tf' >lq
-	chmod +x lq
+	echo '#!'"$__progname" >f
+	echo 'echo >&3 FAIL' >>f
+	echo '#!'"$__progname" >lq
+	echo 'echo tf' >>lq
+	chmod +x lq f
 	PATH=$PWD
-	exec 2>&1
-	foo() { print two; }
-	print =1
-	(exec print one)
-	print =2
-	(exec foo)
-	print =3
-	(exec ls)
-	print =4
-	(exec lq)
+	exec 3>&2 2>&1
+	foo() { echo two; }
+	echo =1
+	(exec echo one; ./f)
+	echo =2
+	(exec foo; ./f)
+	echo =3
+	(exec ls; ./f)
+	echo =4
+	(exec lq; ./f)
 expected-stdout-pattern:
-	/=1\n.*: print: inaccessible or not found\n=2\n.*: foo: inaccessible or not found\n=3\n.*: ls: inaccessible or not found\n=4\ntf\n/
+	/=1\n.*: echo: (?:inaccessible or )?not found\n=2\n.*: foo: (?:inaccessible or )?not found\n=3\n.*: ls: (?:inaccessible or )?not found\n=4\ntf\n/
 ---
 name: xxx-what-do-you-call-this-1
 stdin:
@@ -7339,7 +7351,7 @@ need-ctty: yes
 arguments: !-i!
 stdin:
 	exec echo hi
-	echo still herre
+	echo still here
 expected-stdout:
 	hi
 expected-stderr-pattern: /.*/

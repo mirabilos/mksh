@@ -6,7 +6,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *		 2019, 2020
+ *		 2019, 2020, 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.357 2020/10/31 05:02:17 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.360 2021/01/24 18:14:40 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -103,6 +103,7 @@ static void x_init_prompt(bool);
 static int x_vi(char *);
 #endif
 static void x_intr(int, int) MKSH_A_NORETURN;
+static void x_clrtoeol(int, bool);
 
 #define x_flush()	shf_flush(shl_out)
 #if defined(MKSH_SMALL) && !defined(MKSH_SMALL_BUT_FAST)
@@ -2035,7 +2036,7 @@ x_match(const char *str, const char *pat)
 	if (*pat == '^') {
 		return ((strncmp(str, pat + 1, strlen(pat + 1)) == 0) ? 0 : -1);
 	} else {
-		char *q = strstr(str, pat);
+		const char *q = cstrstr(str, pat);
 		return ((q == NULL) ? -1 : q - str);
 	}
 }
@@ -2079,6 +2080,11 @@ static int
 x_cls(int c MKSH_A_UNUSED)
 {
 	shf_puts(MKSH_CLS_STRING, shl_out);
+	if (prompt_trunc) {
+		/* multi-line prompt */
+		pprompt(prompt, 0);
+		/* x_redraw takes care of the last line */
+	}
 	x_redraw(0);
 	return (KSTD);
 }
@@ -2094,12 +2100,14 @@ x_clrtoeol(int lastch, bool line_was_cleared)
 {
 	int col;
 
-	if (lastch == ' ' && !line_was_cleared && x_term_mode == 1) {
-		shf_puts(KSH_ESC_STRING "[K", shl_out);
-		line_was_cleared = true;
+	if (lastch == ' ') {
+		if (line_was_cleared)
+			return;
+		if (x_term_mode == 1) {
+			shf_puts(KSH_ESC_STRING "[K", shl_out);
+			return;
+		}
 	}
-	if (lastch == ' ' && line_was_cleared)
-		return;
 
 	col = x_col;
 	while (col < (xx_cols - 2)) {

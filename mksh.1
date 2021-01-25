@@ -1,9 +1,9 @@
-.\" $MirOS: src/bin/mksh/mksh.1,v 1.494 2020/10/01 22:39:57 tg Exp $
+.\" $MirOS: src/bin/mksh/mksh.1,v 1.502 2021/01/24 23:04:39 tg Exp $
 .\" $OpenBSD: ksh.1,v 1.160 2015/07/04 13:27:04 feinerer Exp $
 .\"-
 .\" Copyright © 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
 .\"		2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
-.\"		2018, 2019, 2020
+.\"		2018, 2019, 2020, 2021
 .\"	mirabilos <m@mirbsd.org>
 .\"
 .\" Provided that these terms and disclaimer and all copyright notices
@@ -84,7 +84,7 @@
 .\" with -mandoc, it might implement .Mx itself, but we want to
 .\" use our own definition. And .Dd must come *first*, always.
 .\"
-.Dd $Mdocdate: October 1 2020 $
+.Dd $Mdocdate: January 24 2021 $
 .\"
 .\" Check which macro package we use, and do other -mdoc setup.
 .\"
@@ -309,31 +309,32 @@ files:
 .Pp
 .Bl -bullet -compact
 .It
-The
-.Ic cd
-.Po and Ic chdir Pc
-command is disabled.
-.It
-The
-.Ev SHELL ,
-.Ev ENV
-and
+Command names cannot be specified with pathnames, absolute or relative,
+nor using the
+.Fl p
+option of the
+.Ic command
+built-in utility; the
+.Ev ENV ,
 .Ev PATH
+and
+.Ev SHELL
 parameters cannot be changed.
 .It
-Command names can't be specified with absolute or relative paths.
-.It
-The
-.Fl p
-option of the built-in command
-.Ic command
-can't be used.
+The current location is fixed: the
+.Ic cd
+command and its alias
+.Ic chdir
+is disabled.
 .It
 Redirections that create files can't be used (i.e.\&
 .Dq Li \*(Gt ,
 .Dq Li \*(Gt\*(Ba ,
 .Dq Li \*(Gt\*(Gt ,
-.Dq Li \*(Lt\*(Gt ) .
+.Dq Li \*(Lt\*(Gt ) ,
+and the
+.Ev HISTFILE
+parameter cannot be changed.
 .El
 .It Fl s
 The shell reads commands from standard input; all non-option arguments
@@ -1316,7 +1317,7 @@ not
 .Dq Li D
 and
 .Dq Li E .
-This behavior is POSIX compliant, but incompatible with some other shell
+This behaviour is POSIX compliant but incompatible with some other shell
 implementations which do field splitting on the word which contained the
 substitution or use
 .Dv IFS
@@ -1356,7 +1357,8 @@ is interpreted to mean substitute the contents of
 Note that
 .Ic $(\*(Ltfoo)
 has the same effect as
-.Ic $(cat foo) .
+.Ic $(cat foo)
+but is much more performant.
 .Pp
 Note that some shells do not use a recursive parser for command substitutions,
 leading to failure for certain constructs; to be portable, use as workaround
@@ -2999,6 +3001,8 @@ outside the function).
 .It
 Shell options
 .Pq Ic set Fl o
+except
+.Fl p Pq Fl o Ic privileged
 have local scope, i.e. changes inside a function are reset upon its exit.
 .El
 .Pp
@@ -3046,13 +3050,12 @@ commands keeping assignments:
 All other builtins are not special; these are at least:
 .Pp
 .Ic [\& , alias , bg , bind ,
-.Ic builtin , cat , cd , command ,
-.Ic echo , false , fc , fg ,
-.Ic getopts , jobs , kill , let ,
-.Ic print , pwd , read , realpath ,
-.Ic rename , sleep , suspend , test ,
-.Ic true , ulimit , umask , unalias ,
-.Ic wait , whence
+.Ic builtin , cd , command , echo ,
+.Ic false , fc , fg , getopts ,
+.Ic jobs , kill , let , print ,
+.Ic pwd , read , realpath , rename ,
+.Ic suspend , test , true , ulimit ,
+.Ic umask , unalias , wait , whence
 .Pp
 Once the type of command has been determined, any command-line parameter
 assignments are performed and exported for the duration of the command.
@@ -3114,7 +3117,7 @@ variable for your consumption.
 .It Ic Lstripcom Op Ar
 .Pq Li dot.mkshrc No function
 Same as
-.Ic cat
+.Xr cat 1
 but strips any empty lines and comments (from any
 .Sq #
 character onwards, no escapes)
@@ -3295,26 +3298,6 @@ declaration utility (see
 .Sx Tilde expansion )
 .No iff Ar command
 is a declaration utility.
-.Pp
-.It Xo
-.Ic cat
-.Op Fl u
-.Op Ar
-.Xc
-.Pq defer with flags
-Copy files in command line order to standard output.
-If a
-.Ar file
-is a single dash
-.Pq Dq Li \-
-or absent, read from standard input.
-For direct builtin calls, the
-.Tn POSIX
-.Fl u
-option is supported as a no-op.
-For calls from shell, if any options are given, an external
-.Xr cat 1
-utility is preferred over the builtin.
 .Pp
 .It Xo
 .Ic cd
@@ -4672,13 +4655,6 @@ etc.
 .Pq Ar number No defaults to 1
 are renamed to 1, 2, etc.
 .Pp
-.It Ic sleep Ar seconds
-.Pq regular , needs Xr select 2
-Suspends execution for a minimum of the
-.Ar seconds
-(specified as positive decimal value with an optional fractional part).
-Signal delivery may continue execution earlier.
-.Pp
 .It Ic smores Op Ar
 .Pq Li dot.mkshrc No function
 Simple pager:
@@ -5405,6 +5381,12 @@ Limit the size of
 message queues to
 .Ar n
 bytes.
+.It Fl R Ar n
+.Pq Cm Linux
+Limit the CPU time slice a real-time process can use before
+performing a blocking syscall to
+.Ar n
+milliseconds.
 .It Fl r Ar n
 .Pq Cm AIX
 Limit the number of threads per process to
@@ -6289,7 +6271,7 @@ replaces the inserted text string with the next previously killed text string.
 .Pp
 The tab completion escapes characters the same way as the following code:
 .Bd -literal
-print \-nr \-\- "${x@/[\e"\-\e$\e&\-*:\-?[\e\e\e`\e{\-\e}${IFS\-$\*(aq \et\en\*(aq}]/\e\e$KSH_MATCH}"
+print \-nr \-\- "${x@/[\e"\-\e$\e&\-*:\-?[\e\e\e\`\e{\-\e}${IFS\-$\*(aq \et\en\*(aq}]/\e\e$KSH_MATCH}"
 .Ed
 .Ss Vi editing mode
 .Em Note:
@@ -7089,7 +7071,7 @@ for the in-memory portion of the history is slow, should use
 .Xr memmove 3 .
 .Pp
 This document attempts to describe
-.Nm mksh\ R59c
+.Nm mksh\ R59-CURRENT
 and up,
 .\" with vendor patches from insert-your-name-here,
 compiled without any options impacting functionality, such as
