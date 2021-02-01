@@ -4,7 +4,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
- *		 2020
+ *		 2020, 2021
  *	mirabilos <m@mirbsd.org>
  * Copyright (c) 2015
  *	Daniel Richard G. <skunk@iSKUNK.ORG>
@@ -33,7 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.303 2020/11/26 00:42:27 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.306 2021/01/26 23:49:49 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -1678,14 +1678,18 @@ ksh_get_wd(void)
 	char *rv, *cp;
 
 	if ((cp = get_current_dir_name())) {
-		strdupx(rv, cp, ATEMP);
+		if (mksh_abspath(cp))
+			strdupx(rv, cp, ATEMP);
+		else
+			rv = NULL;
 		free_gnu_gcdn(cp);
 	} else
 		rv = NULL;
 #else
 	char *rv;
 
-	if (!getcwd((rv = alloc(PATH_MAX + 1, ATEMP)), PATH_MAX)) {
+	if (!getcwd((rv = alloc(PATH_MAX + 1, ATEMP)), PATH_MAX) ||
+	    !mksh_abspath(rv)) {
 		afree(rv, ATEMP);
 		rv = NULL;
 	}
@@ -1707,12 +1711,14 @@ do_realpath(const char *upath)
 	ssize_t llen;
 	struct stat sb;
 #ifdef MKSH__NO_PATH_MAX
-	size_t ldestlen = 0;
-#define pathlen sb.st_size
-#define pathcnd (ldestlen < (pathlen + 1))
+	off_t ldestlen = 0;
+#define pathlen ((size_t)sb.st_size)
+#define pathcnd ((ldestlen < 1) || ((ldestlen - 1) < sb.st_size))
+#define ldestsz ((size_t)ldestlen)
 #else
-#define pathlen PATH_MAX
+#define pathlen ((size_t)PATH_MAX)
 #define pathcnd (!ldest)
+#define ldestsz (pathlen + 1U)
 #endif
 	/* max. recursion depth */
 	int symlinks = 32;
@@ -1730,7 +1736,7 @@ do_realpath(const char *upath)
 #endif
 	} else {
 		/* upath is a relative pathname, prepend cwd */
-		if ((tp = ksh_get_wd()) == NULL || !mksh_abspath(tp))
+		if ((tp = ksh_get_wd()) == NULL)
 			return (NULL);
 		strpathx(ipath, tp, upath, 1);
 		afree(tp, ATEMP);
@@ -1813,15 +1819,19 @@ do_realpath(const char *upath)
 			/* get symlink(7) target */
 			if (pathcnd) {
 #ifdef MKSH__NO_PATH_MAX
-				if (notoktoadd(pathlen, 1)) {
+				/* same as notoktoadd(pathlen, 1) but adapted */
+				if ((uintmax_t)sb.st_size >= (uintmax_t)SIZE_MAX) {
 					errno = ENAMETOOLONG;
 					goto notfound;
 				}
+				ldestlen = sb.st_size + 1; /* <= SIZE_MAX */
 #endif
-				ldest = aresize(ldest, pathlen + 1, ATEMP);
+				/* ldestsz == pathlen + 1 */
+				ldest = aresize(ldest, ldestsz, ATEMP);
 			}
-			llen = readlink(Xstring(xs, xp), ldest, pathlen + 1);
-			if (llen < 0 || llen > pathlen)
+			errno = ENAMETOOLONG; /* for > pathlen case */
+			llen = readlink(Xstring(xs, xp), ldest, ldestsz);
+			if (llen < 0 || (size_t)llen > pathlen)
 				/* oops... */
 				goto notfound;
 			ldest[llen] = '\0';
