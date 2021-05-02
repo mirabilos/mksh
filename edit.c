@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.362 2021/02/26 11:51:07 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.365 2021/05/02 16:57:52 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -74,6 +74,7 @@ static struct {
 #define XCF_COMMAND_FILE (XCF_COMMAND | XCF_FILE)
 #define XCF_IS_COMMAND	BIT(3)	/* return flag: is command */
 #define XCF_IS_NOSPACE	BIT(4)	/* return flag: do not append a space */
+#define XCF_IS_HOMEDIR	BIT(5)	/* return flag: tilde needs slash */
 
 static char editmode;
 static int xx_cols;			/* for Emacs mode */
@@ -92,7 +93,7 @@ static int x_do_comment(char *, ssize_t, ssize_t *);
 static void x_print_expansions(int, char * const *, bool);
 static int x_cf_glob(int *, const char *, int, int, int *, int *, char ***);
 static size_t x_longest_prefix(int, char * const *);
-static void x_glob_hlp_add_qchar(char *);
+static char *x_glob_hlp_add_qchar(char *);
 static char *x_glob_hlp_tilde_and_rem_qchar(char *, bool);
 static size_t x_basename(const char *, const char *);
 static void x_free_words(int, char **);
@@ -297,41 +298,38 @@ x_print_expansions(int nwords, char * const *words, bool is_command)
 
 /*
  * Convert backslash-escaped string to QCHAR-escaped
- * string useful for globbing; loses QCHAR unless it
- * can squeeze in, eg. by previous loss of backslash
+ * string useful for globbing
  */
-static void
+static char *
 x_glob_hlp_add_qchar(char *cp)
 {
-	char ch, *dp = cp;
+	char ch, *dp;
 	bool escaping = false;
+	XString xs;
+	size_t n;
+
+	if (memchr(cp, QCHAR, (n = strlen(cp)))) {
+		Xinit(xs, dp, n, ATEMP);
+	} else {
+		xs.len = n + 1;
+		xs.areap = NULL; /* won’t be used */
+		xs.beg = dp = cp;
+		xs.end = xs.beg + xs.len;
+	}
 
 	while ((ch = *cp++)) {
 		if (ch == '\\' && !escaping) {
 			escaping = true;
 			continue;
 		}
-		if (escaping || (ch == QCHAR && (cp - dp) > 1)) {
-			/*
-			 * empirically made list of chars to escape
-			 * for globbing as well as QCHAR itself
-			 */
-			switch (ord(ch)) {
-			case QCHAR:
-			case ORD('$'):
-			case ORD('*'):
-			case ORD('?'):
-			case ORD('['):
-			case ORD('\\'):
-			case ORD('`'):
-				*dp++ = QCHAR;
-				break;
-			}
-			escaping = false;
-		}
+		XcheckN(xs, dp, 2);
+		if ((escaping && ctype(ch, C_EDGLB)) || ch == QCHAR)
+			*dp++ = QCHAR;
+		escaping = false;
 		*dp++ = ch;
 	}
 	*dp = '\0';
+	return (Xstring(xs, dp));
 }
 
 /*
@@ -367,8 +365,12 @@ x_glob_hlp_tilde_and_rem_qchar(char *s, bool magic_flag)
 	}
 
 	/* ... convert it from backslash-escaped via QCHAR-escaped... */
-	if (magic_flag)
-		x_glob_hlp_add_qchar(s);
+	if (magic_flag) {
+		cp = x_glob_hlp_add_qchar(s);
+		if (cp != s)
+			afree(s, ATEMP);
+		s = cp;
+	}
 	/* ... to unescaped, for comparison with the matches */
 	cp = dp = s;
 
@@ -391,25 +393,26 @@ x_glob_hlp_tilde_and_rem_qchar(char *s, bool magic_flag)
 static int
 x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 {
-	char **words, *cp;
+	char **words, *cp, *qglob;
 	int nwords;
 	XPtrV w;
 	struct source *s, *sold;
 
 	/* remove all escaping backward slashes */
-	x_glob_hlp_add_qchar(toglob);
+	qglob = x_glob_hlp_add_qchar(toglob);
 
 	/*
 	 * Convert "foo*" (toglob) to an array of strings (words)
 	 */
 	sold = source;
 	s = pushs(SWSTR, ATEMP);
-	s->start = s->str = toglob;
+	s->start = s->str = qglob;
 	source = s;
 	if (yylex(ONEWORD | LQCHAR) != LWORD) {
 		source = sold;
 		internal_warningf(Tfg_badsubst);
-		return (0);
+		nwords = 0;
+		goto out;
 	}
 	source = sold;
 	afree(s, ATEMP);
@@ -434,7 +437,7 @@ x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 		struct stat statb;
 
 		/* Expand any tilde and drop all QCHAR for comparison */
-		toglob = x_glob_hlp_tilde_and_rem_qchar(toglob, false);
+		qglob = x_glob_hlp_tilde_and_rem_qchar(qglob, false);
 
 		/*
 		 * Check if globbing failed (returned glob pattern),
@@ -444,7 +447,7 @@ x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 		 * to glob something which evaluated to an empty
 		 * string (e.g., "$FOO" when there is no FOO, etc).
 		 */
-		if ((strcmp(words[0], toglob) == 0 &&
+		if ((strcmp(words[0], qglob) == 0 &&
 		    stat(words[0], &statb) < 0) ||
 		    words[0][0] == '\0') {
 			x_free_words(nwords, words);
@@ -456,6 +459,9 @@ x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 	if ((*wordsp = nwords ? words : NULL) == NULL && words != NULL)
 		x_free_words(nwords, words);
 
+ out:
+	if (qglob != toglob)
+		afree(qglob, ATEMP);
 	return (nwords);
 }
 
@@ -671,7 +677,7 @@ x_cf_glob(int *flagsp, const char *buf, int buflen, int pos, int *startp,
 
 		if (*toglob == '~' && /* not vdirsep */ !vstrchr(toglob, '/')) {
 			/* neither for '~foo' (but '~foo/bar') */
-			*flagsp |= XCF_IS_NOSPACE;
+			*flagsp |= XCF_IS_HOMEDIR;
 			goto dont_add_glob;
 		}
 
@@ -2884,11 +2890,13 @@ do_complete(
 	x_adjust();
 	/*
 	 * append a space if this is a single non-directory match
-	 * and not a parameter or homedir substitution
+	 * and not a parameter substitution, slash for homedir
 	 */
-	if (nwords == 1 && !mksh_cdirsep(words[0][nlen - 1]) &&
-	    !(flags & XCF_IS_NOSPACE)) {
-		x_ins(T1space);
+	if (nwords == 1 && !mksh_cdirsep(words[0][nlen - 1])) {
+		if (flags & XCF_IS_HOMEDIR)
+			x_ins("/");
+		else if (!(flags & XCF_IS_NOSPACE))
+			x_ins(T1space);
 	}
 
 	x_free_words(nwords, words);
@@ -5536,11 +5544,14 @@ complete_word(int cmd, int count)
 
 		/*
 		 * append a space if this is a non-directory match
-		 * and not a parameter or homedir substitution
+		 * and not a parameter substitution, slash for homedir
 		 */
-		if (match_len > 0 && !mksh_cdirsep(match[match_len - 1]) &&
-		    !(flags & XCF_IS_NOSPACE))
-			rval = putbuf(T1space, 1, false);
+		if (match_len > 0 && !mksh_cdirsep(match[match_len - 1])) {
+			if (flags & XCF_IS_HOMEDIR)
+				rval = putbuf("/", 1, false);
+			else if (!(flags & XCF_IS_NOSPACE))
+				rval = putbuf(T1space, 1, false);
+		}
 	}
 	x_free_words(nwords, words);
 
