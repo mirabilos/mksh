@@ -11,7 +11,7 @@
 /*-
  * Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *	       2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *	       2019, 2020
+ *	       2019, 2020, 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -193,9 +193,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.906 2021/01/24 19:37:31 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.911 2021/05/02 18:14:35 tg Exp $");
 #endif
-#define MKSH_VERSION "R59 2021/01/24"
+#define MKSH_VERSION "R59 2021/05/01"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -717,6 +717,19 @@ im_sorry_dave(void)
 	(d) = strdup_dst;						\
 } while (/* CONSTCOND */ 0)
 #endif
+#define strnbdupx(d,s,n,ap,b) do {					\
+	const char *strdup_src = (const void *)(s);			\
+	char *strdup_dst = NULL;					\
+									\
+	if (strdup_src != NULL) {					\
+		size_t strndup_len = (n);				\
+		strdup_dst = strndup_len < sizeof(b) ? (b) :		\
+		    alloc(strndup_len + 1, (ap));			\
+		memcpy(strdup_dst, strdup_src, strndup_len);		\
+		strdup_dst[strndup_len] = '\0';				\
+	}								\
+	(d) = strdup_dst;						\
+} while (/* CONSTCOND */ 0)
 #define strdup2x(d,s1,s2) do {						\
 	const char *strdup_src = (const void *)(s1);			\
 	const char *strdup_app = (const void *)(s2);			\
@@ -1411,9 +1424,9 @@ EXTERN bool really_exit;
 #define CiOCTAL	BIT(5)	/* 0‥7				*/
 #define CiQCL	BIT(6)	/* &();|			*/
 #define CiALIAS	BIT(7)	/* !,.@				*/
-#define CiQCX	BIT(8)	/* *[\\				*/
+#define CiQCX	BIT(8)	/* *[\\~			*/
 #define CiVAR1	BIT(9)	/* !*@				*/
-#define CiQCM	BIT(10)	/* /^~				*/
+#define CiQCM	BIT(10)	/* /^				*/
 #define CiDIGIT	BIT(11)	/* 89				*/
 #define CiQC	BIT(12)	/* "'				*/
 #define CiSPX	BIT(13)	/* \x0B\x0C			*/
@@ -1457,20 +1470,20 @@ EXTERN char ifs0;
 /* A‥Z_a‥z		alphabetical plus underscore (identifier lead) */
 #define C_ALPHX	(CiLOWER | CiUNDER | CiUPPER)
 /* \x01‥\x7F		7-bit ASCII except NUL */
-#define C_ASCII (CiALIAS | CiANGLE | CiBRACK | CiCNTRL | CiCOLON | CiCR | CiCURLY | CiDIGIT | CiEQUAL | CiGRAVE | CiHASH | CiLOWER | CiMINUS | CiNL | CiOCTAL | CiPERCT | CiPLUS | CiQC | CiQCL | CiQCM | CiQCX | CiQUEST | CiSP | CiSPX | CiSS | CiTAB | CiUNDER | CiUPPER)
+#define C_ASCII	(C_GRAPH | CiCNTRL | CiCR | CiNL | CiSP | CiSPX | CiTAB)
 /* \x09\x20		tab and space */
 #define C_BLANK	(CiSP | CiTAB)
-/* \x09\x20"'		separator for completion */
-#define C_CFS	(CiQC | CiSP | CiTAB)
 /* \x00‥\x1F\x7F	POSIX control characters */
 #define C_CNTRL	(CiCNTRL | CiCR | CiNL | CiNUL | CiSPX | CiTAB)
 /* 0‥9			decimal digits */
 #define C_DIGIT	(CiDIGIT | CiOCTAL)
 /* &();`|			editor x_locate_word() command */
 #define C_EDCMD	(CiGRAVE | CiQCL)
+/* $*?[\\`~			escape for globbing */
+#define C_EDGLB	(CiGRAVE | CiQCX | CiQUEST | CiSS)
 /* \x09\x0A\x20"&'():;<=>`|	editor non-word characters */
 #define C_EDNWC	(CiANGLE | CiCOLON | CiEQUAL | CiGRAVE | CiNL | CiQC | CiQCL | CiSP | CiTAB)
-/* "#$&'()*:;<=>?[\\`{|}	editor quotes for tab completion */
+/* "#$&'()*:;<=>?[\\`{|}~	editor quotes for tab completion */
 #define C_EDQ	(CiANGLE | CiCOLON | CiCURLY | CiEQUAL | CiGRAVE | CiHASH | CiQC | CiQCL | CiQCX | CiQUEST | CiSS)
 /* !‥~			POSIX graphical (alphanumerical plus punctuation) */
 #define C_GRAPH	(C_PUNCT | CiDIGIT | CiLOWER | CiOCTAL | CiUPPER)
@@ -1478,7 +1491,7 @@ EXTERN char ifs0;
 #define C_HEXLT	CiHEXLT
 /* \x00 + $IFS		IFS whitespace, IFS non-whitespace, NUL */
 #define C_IFS	(CiIFS | CiNUL)
-/* \x09\x0A\x20		IFS whitespace */
+/* \x09\x0A\x20		IFS whitespace candidates */
 #define C_IFSWS	(CiNL | CiSP | CiTAB)
 /* \x09\x0A\x20&();<>|	(for the lexer) */
 #define C_LEX1	(CiANGLE | CiNL | CiQCL | CiSP | CiTAB)
@@ -1494,8 +1507,8 @@ EXTERN char ifs0;
 #define C_PRINT	(C_GRAPH | CiSP)
 /* !"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~	POSIX punctuation */
 #define C_PUNCT	(CiALIAS | CiANGLE | CiBRACK | CiCOLON | CiCURLY | CiEQUAL | CiGRAVE | CiHASH | CiMINUS | CiPERCT | CiPLUS | CiQC | CiQCL | CiQCM | CiQCX | CiQUEST | CiSS | CiUNDER)
-/* \x09\x0A"#$&'()*;<=>?[\\]`|	characters requiring quoting, minus space */
-#define C_QUOTE	(CiANGLE | CiBRACK | CiEQUAL | CiGRAVE | CiHASH | CiNL | CiQC | CiQCL | CiQCX | CiQUEST | CiSS | CiTAB)
+/* \x09\x0A"#$&'()*;<=>?[\\]`{|}~	characters requiring quoting, minus space */
+#define C_QUOTE	(CiANGLE | CiBRACK | CiCURLY | CiEQUAL | CiGRAVE | CiHASH | CiNL | CiQC | CiQCL | CiQCX | CiQUEST | CiSS | CiTAB)
 /* 0‥9A‥Fa‥f		hexadecimal digit */
 #define C_SEDEC	(CiDIGIT | CiHEXLT | CiOCTAL)
 /* \x09‥\x0D\x20	POSIX space class */
@@ -1520,9 +1533,9 @@ EXTERN char ifs0;
 #define C_LF	CiNL		/* \x0A	ASCII line feed */
 #define C_MINUS	CiMINUS		/* -	hyphen-minus */
 #ifdef MKSH_WITH_TEXTMODE
-#define C_NL	(CiNL | CiCR)	/* 	CR or LF under OS/2 TEXTMODE */
+#define C_NL	(CiNL | CiCR)	/*	CR or LF under OS/2 TEXTMODE */
 #else
-#define C_NL	CiNL		/* 	LF only like under Unix */
+#define C_NL	CiNL		/*	LF only like under Unix */
 #endif
 #define C_NUL	CiNUL		/* \x00	ASCII NUL */
 #define C_PLUS	CiPLUS		/* +	plus sign */
@@ -2637,6 +2650,7 @@ void change_flag(enum sh_flag, int, bool);
 void change_xtrace(unsigned char, bool);
 int parse_args(const char **, int, bool *);
 int getn(const char *, int *);
+int getpn(const char **, int *);
 int gmatchx(const char *, const char *, bool);
 bool has_globbing(const char *) MKSH_A_PURE;
 int ascstrcmp(const void *, const void *) MKSH_A_PURE;
@@ -2749,7 +2763,7 @@ struct tbl *arraysearch(struct tbl *, uint32_t);
 char **makenv(void);
 void change_winsz(void);
 size_t array_ref_len(const char *) MKSH_A_PURE;
-char *arrayname(const char *);
+struct tbl *arraybase(const char *);
 mksh_uari_t set_array(const char *, bool, const char **);
 uint32_t hash(const void *) MKSH_A_PURE;
 uint32_t chvt_rndsetup(const void *, size_t) MKSH_A_PURE;

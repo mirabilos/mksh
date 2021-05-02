@@ -3,7 +3,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *		 2019, 2020
+ *		 2019, 2020, 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.231 2020/05/05 21:34:27 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.233 2021/05/02 05:57:03 tg Exp $");
 
 /*
  * string expansion
@@ -1005,8 +1005,8 @@ expand(
 				c = ORD('\n');
 				--newlines;
 			} else {
-				while ((c = shf_getc(x.u.shf)) == 0 ||
-				    cinttype(c, C_NL)) {
+				while (c = shf_getc(x.u.shf),
+				    cinttype(c, C_NL | C_NUL)) {
 #ifdef MKSH_WITH_TEXTMODE
 					if (c == ORD('\r')) {
 						c = shf_getc(x.u.shf);
@@ -1300,7 +1300,7 @@ varsub(Expand *xp, const char *sp, const char *word,
 			if (sc & 2) {
 				stype = 0;
 				XPinit(wv, 32);
-				vp = global(arrayname(sp));
+				vp = arraybase(sp);
 				do {
 					if (vp->flag & ISSET)
 						XPput(wv, shf_smprintf(Tf_lu,
@@ -1347,7 +1347,7 @@ varsub(Expand *xp, const char *sp, const char *word,
 		case ORD('#'):
 			  switch (sc & 3) {
 			case 3:
-				vp = global(arrayname(sp));
+				vp = arraybase(sp);
 				if (vp->flag & (ISSET|ARRAY))
 					zero_ok = true;
 				sc = 0;
@@ -1458,7 +1458,7 @@ varsub(Expand *xp, const char *sp, const char *word,
 		/* do what we can */
 		if (sc & 2) {
 			XPinit(wv, 32);
-			vp = global(arrayname(sp));
+			vp = arraybase(sp);
 			do {
 				if (vp->flag & ISSET)
 					XPput(wv, str_val(vp));
