@@ -27,7 +27,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.107 2021/05/02 18:14:35 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.110 2021/06/21 00:29:33 tg Exp $");
 
 /* flags to shf_emptybuf() */
 #define EB_READSW	0x01	/* about to switch to reading */
@@ -798,6 +798,8 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 	char numbuf[(8 * sizeof(long) + 2) / 3 + 1 + /* NUL */ 1];
 	/* this stuff for dealing with the buffer */
 	ssize_t nwritten = 0;
+	/* for width determination */
+	const char *lp, *np;
 
 #define VA(type) va_arg(args, type)
 
@@ -1018,11 +1020,30 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 		 */
 		if (!(flags & FL_DOT) || len < precision)
 			precision = len;
+		/* determine whether we can indeed write precision columns */
+		len = 0;
+		lp = s;
+		while (*lp) {
+			int w = utf_widthadj(lp, &np);
+
+			if ((len + w) > precision)
+				break;
+			lp = np;
+			len += w;
+		}
+		/* trailing combining characters */
+		if (UTFMODE)
+			while (*lp && utf_widthadj(lp, &np) == 0)
+				lp = np;
+		/* how much we can actually output */
+		precision = len;
+
+		/* output leading padding */
 		if (field > precision) {
 			field -= precision;
 			if (!(flags & FL_RIGHT)) {
 				/* skip past sign or 0x when padding with 0 */
-				if ((flags & FL_ZERO) && (flags & FL_NUMBER)) {
+				if ((flags & (FL_ZERO | FL_NUMBER)) == (FL_ZERO | FL_NUMBER)) {
 					if (ctype(*s, C_SPC | C_PLUS | C_MINUS)) {
 						shf_putc(*s, shf);
 						s++;
@@ -1052,11 +1073,11 @@ shf_vfprintf(struct shf *shf, const char *fmt, va_list args)
 		} else
 			field = 0;
 
-		nwritten += precision;
-		precision = utf_skipcols(s, precision, &tmp) - s;
-		while (precision--)
-			shf_putc(*s++, shf);
+		/* output string */
+		nwritten += (lp - s);
+		shf_write(s, lp - s, shf);
 
+		/* output trailing padding */
 		nwritten += field;
 		while (field--)
 			shf_putc(c, shf);
@@ -1244,8 +1265,8 @@ set_ifs(const char *s)
  *    contain all (most?) of the characters in ASCII, and these
  *    usually tend to agree on the code points assigned to the ASCII
  *    subset. If you need a representative example, look at EBCDIC 1047,
- *    which is first among equals in the IBM MVS development
- *    environment: https://en.wikipedia.org/wiki/EBCDIC_1047
+ *    which is first among equals in the IBM MVS development environment:
+ * https://web.archive.org/web/20200810035140/https://en.wikipedia.org/wiki/EBCDIC_1047
  *    Unfortunately, the square brackets are not consistently mapped,
  *    and for certain reasons, we need an unambiguous bijective
  *    mapping between EBCDIC and "extended ASCII".
@@ -1267,6 +1288,13 @@ set_ifs(const char *s)
  *    mainframe systems, using the -qascii option to the XL C compiler.
  *    We can determine the build mode by looking at __CHARSET_LIB:
  *    0 == EBCDIC, 1 == ASCII
+ *
+ * UTF-8 is not used, nor is UTF-EBCDIC really. We solve this problem
+ * by treating it as "nega-UTF-8": on EBCDIC systems, the output is
+ * converted to the "extended ASCII" codepage from the current EBCDIC
+ * codepage always so we convert UTF-8 backwards so the conversion
+ * will result in valid UTF-8. This may introduce fun on the EBCDIC
+ * side, but as it's not really used anyway we decided to take the risk.
  */
 
 void
@@ -1321,6 +1349,86 @@ ebcdic_init(void)
 	}
 	if (ebcdic_rtt_toascii[0] || ebcdic_rtt_fromascii[0] || ebcdic_map[0]) {
 		write(2, "mksh: NUL not at position 0\n", 28);
+		exit(255);
+	}
+	if (rtt2asc('\n') != 0x0AU || rtt2asc('\r') != 0x0DU ||
+	    rtt2asc(' ') != 0x20U ||
+	    rtt2asc('!') != 0x21U ||
+	    rtt2asc('"') != 0x22U ||
+	    rtt2asc('#') != 0x23U ||
+	    rtt2asc('$') != 0x24U ||
+	    rtt2asc('%') != 0x25U ||
+	    rtt2asc('&') != 0x26U ||
+	    rtt2asc('\'') != 0x27U ||
+	    rtt2asc('(') != 0x28U ||
+	    rtt2asc(')') != 0x29U ||
+	    rtt2asc('*') != 0x2AU ||
+	    rtt2asc('+') != 0x2BU ||
+	    rtt2asc(',') != 0x2CU ||
+	    rtt2asc('-') != 0x2DU ||
+	    rtt2asc('.') != 0x2EU ||
+	    rtt2asc('/') != 0x2FU ||
+	    rtt2asc('0') != 0x30U ||
+	    rtt2asc(':') != 0x3AU ||
+	    rtt2asc(';') != 0x3BU ||
+	    rtt2asc('<') != 0x3CU ||
+	    rtt2asc('=') != 0x3DU ||
+	    rtt2asc('>') != 0x3EU ||
+	    rtt2asc('?') != 0x3FU ||
+	    rtt2asc('@') != 0x40U ||
+	    rtt2asc('A') != 0x41U ||
+	    rtt2asc('B') != 0x42U ||
+	    rtt2asc('C') != 0x43U ||
+	    rtt2asc('D') != 0x44U ||
+	    rtt2asc('E') != 0x45U ||
+	    rtt2asc('F') != 0x46U ||
+	    rtt2asc('G') != 0x47U ||
+	    rtt2asc('H') != 0x48U ||
+	    rtt2asc('I') != 0x49U ||
+	    rtt2asc('N') != 0x4EU ||
+	    rtt2asc('O') != 0x4FU ||
+	    rtt2asc('P') != 0x50U ||
+	    rtt2asc('Q') != 0x51U ||
+	    rtt2asc('R') != 0x52U ||
+	    rtt2asc('S') != 0x53U ||
+	    rtt2asc('T') != 0x54U ||
+	    rtt2asc('U') != 0x55U ||
+	    rtt2asc('W') != 0x57U ||
+	    rtt2asc('X') != 0x58U ||
+	    rtt2asc('Y') != 0x59U ||
+	    rtt2asc('[') != 0x5BU ||
+	    rtt2asc('\\') != 0x5CU ||
+	    rtt2asc(']') != 0x5DU ||
+	    rtt2asc('^') != 0x5EU ||
+	    rtt2asc('_') != 0x5FU ||
+	    rtt2asc('`') != 0x60U ||
+	    rtt2asc('a') != 0x61U ||
+	    rtt2asc('b') != 0x62U ||
+	    rtt2asc('c') != 0x63U ||
+	    rtt2asc('d') != 0x64U ||
+	    rtt2asc('e') != 0x65U ||
+	    rtt2asc('f') != 0x66U ||
+	    rtt2asc('g') != 0x67U ||
+	    rtt2asc('h') != 0x68U ||
+	    rtt2asc('i') != 0x69U ||
+	    rtt2asc('j') != 0x6AU ||
+	    rtt2asc('k') != 0x6BU ||
+	    rtt2asc('l') != 0x6CU ||
+	    rtt2asc('n') != 0x6EU ||
+	    rtt2asc('p') != 0x70U ||
+	    rtt2asc('r') != 0x72U ||
+	    rtt2asc('s') != 0x73U ||
+	    rtt2asc('t') != 0x74U ||
+	    rtt2asc('u') != 0x75U ||
+	    rtt2asc('v') != 0x76U ||
+	    rtt2asc('w') != 0x77U ||
+	    rtt2asc('x') != 0x78U ||
+	    rtt2asc('y') != 0x79U ||
+	    rtt2asc('{') != 0x7BU ||
+	    rtt2asc('|') != 0x7CU ||
+	    rtt2asc('}') != 0x7DU ||
+	    rtt2asc('~') != 0x7EU) {
+		write(2, "mksh: compiler vs. runtime codepage mismatch!\n", 46);
 		exit(255);
 	}
 }

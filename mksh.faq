@@ -1,4 +1,4 @@
-RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.19 2021/05/02 08:26:03 tg Exp $
+RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.22 2021/06/15 13:20:06 tg Exp $
 ToC: spelling
 Title: How do you spell <tt>mksh</tt>? How do you pronounce it?
 
@@ -101,8 +101,8 @@ Title: How does this relate to ksh or the Korn Shell?
  getting close to, ksh88 compatibility.</p>
 <p>SKsh is an AmigaOS-specific Korn Shell-lookalike by Steve Koren.</p>
 <p>The <a href="@@RELPATH@@ksh-chan.htm">Homepage of the <tt>#ksh</tt>
- channel on Freenode IRC</a> contains more information about the Korn
- Shell in general and its flavours.</p>
+ channel on IRC</a> contains more information about the Korn Shell in
+ general and its flavours.</p>
 ----
 ToC: packaging
 Title: How should I package mksh? (common cases)
@@ -345,6 +345,27 @@ Title: Multiline command editing
  command line if you quit without saving, so request the editor to exit
  nōn-zero (e.g. using jupp’s “abendjoe” command) to prevent execution.
  This is <em>really</em> useful to write ad-hōc scripts as well.</p>
+----
+ToC: escaping
+Title: Some characters don’t display right
+
+<p>First, make sure that either you’re using a UTF-8 terminal and system
+ and the shell’s UTF-8 mode is on (<tt>set -U</tt>) or that you’re using
+ an 8-bit codepage/CCSID and the UTF-8 mode is off (<tt>set +U</tt>). If
+ you’re on an EBCDIC system ensure to pick a codepage that has a bijective
+ mapping to (Extended) ASCII and in which all necessary characters are
+ present, for example 1047. Furthermore ensure the compile-time and runtime
+ codepages match. (Other encoding schemes, e.g. DBCS or ISO-2022-JP, are
+ not supported.) This should already fix most relevant issues.</p>
+<p>If you’re on an 8-bit codepage which uses the codepoints 0x80‥0x9F, as
+ opposed to placing control characters in that range (like ISO 8859), such
+ as codepages 437, 850, 1252, … (usually on OS/2 or DOS-based systems),
+ enable the new option <tt>set -o asis</tt>; otherwise these characters
+ will be escaped to avoid accidentally reconfiguring the terminal.</p>
+<p>Note that escaping of characters is, at runtime, dependent on whether
+ the shell was compiled for EBCDIC and on both <tt>utf8-mode</tt> and
+ <tt>asis</tt>, the latter being ignored if the former is enabled, though
+ (in UTF-8 mode, UCS C1 codepoints are always escaped).</p>
 ----
 ToC: ctrl-l-cls
 Title: ^L (Ctrl-L) does not clear the screen
@@ -696,18 +717,22 @@ Title: I use “set -eo pipefail” and my code unexpectedly errors out
 ToC: faq
 Title: My question is not answered here!
 
-Do read the mksh(1) manual page. You might also wish to read the <a
- href="@@RELPATH@@ksh-chan.htm">homepage of the <tt>#ksh</tt> IRC channel
-on Freenode</a> which lists several resources for Korn or POSIX-compatible
-shells in general. Or, <a href="#contact">contact</a> us (developer and
-users), for example via IRC.
+Do read the mksh(1) and lksh(1) manual page. You might also wish to read the <a
+ href="@@RELPATH@@ksh-chan.htm">homepage of the <tt>#ksh</tt> IRC channel</a>
+which lists several resources for Korn or POSIX-compatible shells in general.
+Or, <a href="#contact">contact</a> us (developer and users).
 ----
 ToC: contact
-Title: How do I contact you (to say thanks)?
+Title: How do I contact you (to say thanks, for bugreports and questions)?
 
-You can say hi in the <tt>#!/bin/mksh</tt> channel on Freenode <a
- href="@@RELPATH@@irc.htm">IRC</a>, although a <a
- href="@@RELPATH@@danke.htm">donation</a> wouldn’t be amiss ☺ The <a
- href="http://www.mail-archive.com/miros-mksh@mirbsd.org/">mailing
-list</a> can also be used.
+<p>You can say hi in the <tt>#!/bin/mksh</tt> channel on <a
+ href="@@RELPATH@@irc.htm">IRC</a> (OFTC, for now), although… a
+ <a href="@@RELPATH@@danke.htm">donation</a> wouldn’t be amiss ☻
+<br />The <a href="@@RELPATH@@rss.htm#lists">mailing list</a> can also
+ be used for this. The <a href="#faq">extra resources</a> from the FAQ
+ entry just one above should also be considered ;-)</p>
+<p>If you insist on sending a bugreport, IRC and the mailing list are
+ great places for that; <a href="https://launchpad.net/mksh">Launchpad</a>,
+ an external gratis service provided by a company, can also be used if you
+ like web-based issue trackers better.</p>
 ----
