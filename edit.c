@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.365 2021/05/02 16:57:52 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.374 2021/06/20 23:02:45 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -896,6 +896,61 @@ x_escape(const char *s, size_t len, int (*putbuf_func)(const char *, size_t))
 
 /* +++ emacs editing mode +++ */
 
+/*-
+ * The input buffer "buf" is pointed to by "xbuf" and its end is
+ * pointed to by "xend".  The current position in "xbuf" and end of
+ * the edit line are pointed to by "xcp" and "xep" respectively.
+ * "xbp" points to the start of a display window within "xbuf", and
+ * "xlp" points to the last visible character on screen, if valid;
+ * "xdp" points to the end of x_displen, adding one-column bytes if
+ * necessary when the input line is shorter.
+ *
+ * [A] starting position
+ *
+ *      buf
+ * |<--------- $COLUMNS -------->|
+ *      |<---- x_displen ------->|
+ *  PS1 |
+ *      +=====+=========+........+.............................+
+ *      |\     \        |\        \                             \
+ *   xbuf xbp   xcp   xlp xep      xdp                           xend
+ *
+ * [B] larger input line
+ *
+ *      buf
+ * |<--------- $COLUMNS -------->|
+ *      |<---- x_displen ------->|
+ *  PS1 |
+ *      +===========+============+---------------------+.......+
+ *      |\          \             \                     \       \
+ *   xbuf xbp        xcp           xlp=xdp               xep     xend
+ *
+ * [C] scrolled
+ *
+ *      buf
+ *      |       |<--------- $COLUMNS -------->|
+ *      |       |<--------- x_displen ------->|
+ *      |
+ *      +-------+==============+==============+--------+.......+
+ *      |        \              \              \        \       \
+ *   xbuf         xbp            xcp            xlp=xdp  xep     xend
+ *
+ * In the above -------- represents the current edit line while
+ * ===== represents that portion which is visible on the screen;
+ * ....... is unused space in buf. Note that initially xbp == xbuf
+ * and PS1 is displayed. PS1 uses some of the screen width and thus
+ * "x_displen" is less than $COLUMNS.
+ *
+ * Any time that "xcp" moves outside the region bounded by "xbp"
+ * and "xbp" + "x_displen", the function x_adjust() is called to
+ * relocate "xbp" appropriately and redraw the line.
+ *
+ * Excessive I/O is avoided where possible.  x_goto() for instance
+ * calculates whether the destination is outside the visible
+ * region, and if so simply adjusts "xcp" and calls x_adjust()
+ * directly.  Normally though x_adjust() is called from x_putc().
+ */
+
 static	Area	aedit;
 #define	AEDIT	&aedit		/* area for kill ring and macro defns */
 
@@ -944,17 +999,19 @@ static char *xcp;		/* current position */
 static char *xep;		/* current end */
 static char *xbp;		/* start of visible portion of input buffer */
 static char *xlp;		/* last char visible on screen */
+static char *xdp;		/* xbuf + x_displen except multibyte-aware */
 static bool x_adj_ok;
 /*
  * we use x_adj_done so that functions can tell
  * whether x_adjust() has been called while they are active.
  */
-static int x_adj_done;		/* is incremented by x_adjust() */
+static uint8_t x_adj_done;	/* is incremented by x_adjust() */
 
 static int x_displen;
 static int x_arg;		/* general purpose arg */
 static bool x_arg_defaulted;	/* x_arg not explicitly set; defaulted to 1 */
 
+/* indicates both xlp and xdp are valid (x_goto needs the latter) */
 static bool xlp_valid;		/* lastvis pointer was recalculated */
 
 static char **x_histp;		/* history position */
@@ -997,7 +1054,6 @@ static void x_bs3(char **);
 static int x_size2(char *, char **);
 static void x_zots(char *);
 static void x_zotc3(char **);
-static void x_vi_zotc(int);
 static void x_load_hist(char **);
 static int x_search(const char *, int, int);
 #ifndef MKSH_SMALL
@@ -1255,14 +1311,17 @@ x_emacs(char *buf)
 	xend = buf + LINE;
 	xlp = xcp = xep = buf;
 	*xcp = 0;
-	xlp_valid = true;
 	xmp = NULL;
 	x_curprefix = 0;
 	x_histmcp = x_histp = histptr + 1;
 	x_last_command = XFUNC_error;
 
+	xx_cols = x_cols;
+	x_adj_ok = false;
 	x_init_prompt(true);
-	x_displen = (xx_cols = x_cols) - 2 - (x_col = pwidth);
+	x_displen = xx_cols - 2 - (x_col = pwidth);
+	xdp = xbp + x_displen;
+	xlp_valid = true;
 	x_adj_done = 0;
 	x_adj_ok = true;
 
@@ -1408,7 +1467,7 @@ static int
 x_ins(const char *s)
 {
 	char *cp = xcp;
-	int adj = x_adj_done;
+	uint8_t adj = x_adj_done;
 
 	if (x_do_ins(s, strlen(s)) < 0)
 		return (-1);
@@ -1642,7 +1701,7 @@ static void
 x_goto(char *cp)
 {
 	cp = cp >= xep ? xep : x_bs0(cp, xbuf);
-	if (cp < xbp || cp >= utf_skipcols(xbp, x_displen, NULL)) {
+	if (cp < xbp || (x_lastcp(), cp >= xdp)) {
 		/* we are heading off screen */
 		xcp = cp;
 		x_adjust();
@@ -1660,10 +1719,22 @@ x_goto(char *cp)
 static char *
 x_bs0(char *cp, char *lower_bound)
 {
-	if (UTFMODE)
-		while ((!lower_bound || (cp > lower_bound)) &&
-		    ((rtt2asc(*cp) & 0xC0) == 0x80))
-			--cp;
+	if (UTFMODE) {
+		char *bp = cp;
+		size_t n;
+
+		/* skip backwards knowing the UTF-8 encoding */
+		while (bp > lower_bound && (rtt2asc(*bp) & 0xC0U) == 0x80U)
+			--bp;
+		/* ensure we arrive back at the original point */
+		n = utf_mbtowc(NULL, bp);
+		if (n == (size_t)-1)
+			n = 1;
+		/* back where we started? if so, this was indeed UTF-8 */
+		if (bp + n - 1 == cp)
+			return (bp);
+		/* no so some raw octet is at *cp */
+	}
 	return (cp);
 }
 
@@ -1672,7 +1743,7 @@ x_bs3(char **p)
 {
 	int i;
 
-	*p = x_bs0((*p) - 1, NULL);
+	*p = x_bs0((*p) - 1, xbuf);
 	i = x_size2(*p, NULL);
 	while (i--)
 		x_e_putc2('\b');
@@ -1699,7 +1770,7 @@ x_size2(char *cp, char **dcp)
 static void
 x_zots(char *str)
 {
-	int adj = x_adj_done;
+	uint8_t adj = x_adj_done;
 
 	x_lastcp();
 	while (*str && str < xlp && x_col < xx_cols && adj == x_adj_done)
@@ -1713,7 +1784,7 @@ x_zotc3(char **cp)
 
 	if (c == '\t') {
 		/* Kludge, tabs are always four spaces. */
-		x_e_puts(T4spaces);
+		x_e_puts("    ");
 		(*cp)++;
 	} else if (ksh_isctrl(c)) {
 		x_e_putc2('^');
@@ -2089,6 +2160,7 @@ x_del_line(int c MKSH_A_UNUSED)
 	*xep = 0;
 	x_push(xep - (xcp = xbuf));
 	xlp = xbp = xep = xbuf;
+	xdp = xbp + x_displen;
 	xlp_valid = true;
 	*xcp = 0;
 	xmp = NULL;
@@ -2368,12 +2440,17 @@ x_meta_yank(int c MKSH_A_UNUSED)
 static void
 x_intr(int signo, int c)
 {
-	x_vi_zotc(c);
+	if (ksh_isctrl(c)) {
+		x_putc('^');
+		c = ksh_unctrl(c);
+	}
+	x_putc(c);
 	*xep = '\0';
 	strip_nuls(xbuf, xep - xbuf);
 	if (*xbuf)
 		histsave(&source->line, xbuf, HIST_STORE, true);
 	xlp = xep = xcp = xbp = xbuf;
+	xdp = xbp + x_displen;
 	xlp_valid = true;
 	*xcp = 0;
 	x_modified();
@@ -2919,40 +2996,50 @@ do_complete(
 static void
 x_adjust(void)
 {
-	int col_left, n;
+	int colcur, colmax;
 
 	/* flag the fact that we were called */
 	x_adj_done++;
 
+	/* fix up xcp to just past a character end first */
+	xcp = xcp >= xep ? xep : x_bs0(xcp, xbuf);
+	/* shortcut if going to beginning of line */
+	if (xcp == (xbp = xbuf))
+		goto x_adjust_out;
+
+	/* check if the entire line fits */
+	x_displen = xx_cols - 2 - pwidth;
+	xlp_valid = false;
+	x_lastcp();
+	/* accept if the cursor is still in the editable area */
+	if (xcp < xdp /*|| xdp >= xep */)
+		goto x_adjust_out;
+
+	/* ok, that was a failure so we need to proceed backwards from xcp */
+	xbp = xcp;
+	/* assert xbp > xbuf */
+
 	/*
-	 * calculate the amount of columns we need to "go back"
-	 * from xcp to set xbp to (but never < xbuf) to 2/3 of
-	 * the display width; take care of pwidth though
+	 * if we have enough space left on screen, we aim to
+	 * position the cursor at 3/4 of the display width;
+	 * if not we emergency-fit just one character before…
 	 */
-	if ((col_left = xx_cols * 2 / 3) < MIN_EDIT_SPACE) {
-		/*
-		 * cowardly refuse to do anything
-		 * if the available space is too small;
-		 * fall back to dumb pdksh code
-		 */
-		if ((xbp = xcp - (x_displen / 2)) < xbuf)
-			xbp = xbuf;
-		/* elide UTF-8 fixup as penalty */
+	if ((colmax = xx_cols * 3 / 4) < MIN_EDIT_SPACE) {
+		/* one backwards though */
+		xbp = x_bs0(xbp - 1, xbuf);
+		/* go for it */
 		goto x_adjust_out;
 	}
 
-	/* fix up xbp to just past a character end first */
-	xbp = xcp >= xep ? xep : x_bs0(xcp, xbuf);
-	/* walk backwards */
-	while (xbp > xbuf && col_left > 0) {
+	/* go backwards until we reached the target width */
+	colcur = 0;
+	while (xbp > xbuf && colcur < colmax) {
 		xbp = x_bs0(xbp - 1, xbuf);
-		col_left -= (n = x_size2(xbp, NULL));
+		colcur += x_size2(xbp, NULL);
 	}
-	/* check if we hit the prompt */
-	if (xbp == xbuf && xcp != xbuf && col_left >= 0 && col_left < pwidth) {
-		/* so we did; force scrolling occurs */
+	/* check if we hit the prompt and force scrolling if so */
+	if (xbp == xbuf)
 		xbp += utf_ptradj(xbp);
-	}
 
  x_adjust_out:
 	xlp_valid = false;
@@ -2991,16 +3078,18 @@ x_e_getc(void)
 static void
 x_e_putc2(int c)
 {
-	int width = 1;
-
 	if (ctype(c, C_CR | C_LF))
 		x_col = 0;
 	if (x_col < xx_cols) {
-#ifndef MKSH_EBCDIC
-		if (UTFMODE && (c > 0x7F)) {
+		int width;
+
+		/*XXX to go away once x_zotc3 no longer x_e_putc2(ksh_unctrl */
+		/*XXX this function should take 1-column SBCS only except ↑ */
+		if (UTFMODE && (rtt2asc(c) > 0x7FU)) {
 			char utf_tmp[3];
 			size_t x;
 
+			/*XXX bad semantics vs EBCDIC */
 			if (c < 0xA0)
 				c = 0xFFFD;
 			x = utf_wctomb(utf_tmp, c);
@@ -3010,9 +3099,10 @@ x_e_putc2(int c)
 			if (x > 2)
 				x_putc(utf_tmp[2]);
 			width = utf_wcwidth(c);
-		} else
-#endif
+		} else {
 			x_putc(c);
+			width = 1;
+		}
 		switch (c) {
 		case KSH_BEL:
 			break;
@@ -3034,30 +3124,31 @@ x_e_putc2(int c)
 static void
 x_e_putc3(const char **cp)
 {
-	int width = 1, c = **(const unsigned char **)cp;
+	int c = **(const unsigned char **)cp;
 
 	if (ctype(c, C_CR | C_LF))
 		x_col = 0;
 	if (x_col < xx_cols) {
-		if (UTFMODE && (c > 0x7F)) {
+		int width;
+
+		if (UTFMODE && (rtt2asc(c) > 0x7FU)) {
 			char *cp2;
 
 			width = utf_widthadj(*cp, (const char **)&cp2);
 			if (cp2 == *cp + 1) {
 				(*cp)++;
-#ifdef MKSH_EBCDIC
 				x_putc(asc2rtt(0xEF));
 				x_putc(asc2rtt(0xBF));
 				x_putc(asc2rtt(0xBD));
-#else
-				shf_puts("\xEF\xBF\xBD", shl_out);
-#endif
 			} else
-				while (*cp < cp2)
-					x_putcf(*(*cp)++);
+				while (*cp < cp2) {
+					c = *(*cp)++;
+					x_putc(c);
+				}
 		} else {
 			(*cp)++;
 			x_putc(c);
+			width = 1;
 		}
 		switch (c) {
 		case KSH_BEL:
@@ -3080,7 +3171,7 @@ x_e_putc3(const char **cp)
 static void
 x_e_puts(const char *s)
 {
-	int adj = x_adj_done;
+	uint8_t adj = x_adj_done;
 
 	while (*s && adj == x_adj_done)
 		x_e_putc3(&s);
@@ -3391,7 +3482,7 @@ x_fold_case(int c, uint32_t separator)
  * DESCRIPTION:
  *	This function returns a pointer to that char in the
  *	edit buffer that will be the last displayed on the
- *	screen.
+ *	screen. It also updates xlp and xdp.
  */
 static char *
 x_lastcp(void)
@@ -3403,13 +3494,19 @@ x_lastcp(void)
 		xlp = xbp;
 		while (xlp < xep) {
 			j = x_size2(xlp, &xlp2);
-			if ((i + j) > x_displen)
-				break;
+			if ((i + j) > x_displen) {
+				/* don’t add (x_displen - i) here */
+				/* can be 2-column doesn’t-fit char */
+				xdp = xlp;
+				goto xlp_longline;
+			}
 			i += j;
 			xlp = xlp2;
 		}
+		xdp = xlp + (x_displen - i);
+ xlp_longline:
+		xlp_valid = true;
 	}
-	xlp_valid = true;
 	return (xlp);
 }
 
@@ -3719,7 +3816,11 @@ x_vi(char *buf)
 			} else if (isched(c, edchars.eof) &&
 			    state != VVERSION) {
 				if (vs->linelen == 0) {
-					x_vi_zotc(c);
+					if (ksh_isctrl(c)) {
+						x_putc('^');
+						c = ksh_unctrl(c);
+					}
+					x_putc(c);
 					c = -1;
 					break;
 				}
@@ -5583,20 +5684,7 @@ print_expansions(struct edstate *est, int cmd MKSH_A_UNUSED)
 	redraw_line(false);
 	return (0);
 }
-#endif /* !MKSH_S_NOVI */
 
-/* Similar to x_zotc(emacs.c), but no tab weirdness */
-static void
-x_vi_zotc(int c)
-{
-	if (ksh_isctrl(c)) {
-		x_putc('^');
-		c = ksh_unctrl(c);
-	}
-	x_putc(c);
-}
-
-#if !MKSH_S_NOVI
 static void
 vi_error(void)
 {

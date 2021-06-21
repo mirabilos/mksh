@@ -2,7 +2,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
- *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018
+ *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
+ *		 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.252 2020/12/14 00:21:09 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.255 2021/05/30 04:58:35 tg Exp $");
 
 /*
  * states while lexing word
@@ -1482,26 +1483,29 @@ set_prompt(int to, Source *s)
 		 * substitutions, POSIX doesn't say which is to be done.
 		 */
 		{
+			char ch;
 			struct shf *shf;
 			char * volatile ps1;
 			Area *saved_atemp;
 			int saved_lineno;
 
+			saved_atemp = ATEMP;
+			newenv(E_ERRH);
 			ps1 = str_val(global("PS1"));
 			shf = shf_sopen(NULL, strlen(ps1) * 2,
 			    SHF_WR | SHF_DYNAMIC, NULL);
-			while (*ps1)
-				if (*ps1 != '!' || *++ps1 == '!')
-					shf_putchar(*ps1++, shf);
-				else
+			while ((ch = *ps1++))
+				if (ch != '!' || *ps1++ == '!')
+					shf_putc(ch, shf);
+				else {
+					--ps1;
 					shf_fprintf(shf, Tf_lu, s ?
 					    (unsigned long)s->line + 1 : 0UL);
+				}
 			ps1 = shf_sclose(shf);
 			saved_lineno = current_lineno;
 			if (s)
 				current_lineno = s->line + 1;
-			saved_atemp = ATEMP;
-			newenv(E_ERRH);
 			if (kshsetjmp(e->jbuf)) {
 				prompt = safe_prompt;
 				/*
@@ -1516,6 +1520,7 @@ set_prompt(int to, Source *s)
 				strdupx(prompt, cp, saved_atemp);
 			}
 			current_lineno = saved_lineno;
+			/* frees everything in post-newenv ATEMP */
 			quitenv(NULL);
 		}
 		break;

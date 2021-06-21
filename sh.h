@@ -193,9 +193,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.911 2021/05/02 18:14:35 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.915 2021/06/21 00:29:32 tg Exp $");
 #endif
-#define MKSH_VERSION "R59 2021/05/01"
+#define MKSH_VERSION "R59 2021/05/29"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -852,6 +852,8 @@ enum sh_flag {
  * parsing & execution environment
  *
  * note that kshlongjmp MUST NOT be passed 0 as second argument!
+ *
+ * kshsetjmp() is to *not* save (and kshlongjmp() to not restore) signals!
  */
 #ifdef MKSH_NO_SIGSETJMP
 #define kshjmp_buf	jmp_buf
@@ -983,7 +985,6 @@ EXTERN char null[] E_INIT("");
 #endif
 
 #ifndef HAVE_STRING_POOLING /* helpers for pooled strings */
-EXTERN const char T4spaces[] E_INIT("    ");
 #define T1space (Treal_sp2 + 5)
 #define Tcolsp (Tf_sD_ + 2)
 #define TC_IFSWS (TinitIFS + 4)
@@ -1147,7 +1148,6 @@ EXTERN const char Tf_sD_s_s[] E_INIT("%s: %s %s");
 #define Tf_sD_s (Tf_temp + 24)
 EXTERN const char T_devtty[] E_INIT("/dev/tty");
 #else /* helpers for string pooling */
-#define T4spaces "    "
 #define T1space " "
 #define Tcolsp ": "
 #define TC_IFSWS " \t\n"
@@ -1582,13 +1582,14 @@ extern void ebcdic_init(void);
 #define asciibetical(c)	ord(c)
 #define rtt2asc(c)	((unsigned char)(c))
 #define asc2rtt(c)	((unsigned char)(c))
-#define ksh_eq(c,u,l)	((ord(c) | 0x20) == ord(l))
+#define ksh_eq(c,u,l)	((ord(c) | 0x20U) == ord(l))
 #endif
 /* control character foo */
 #ifdef MKSH_EBCDIC
-#define ksh_isctrl(c)	(ord(c) < 0x40 || ord(c) == 0xFF)
+#define ksh_isctrl(c)	(ord(c) < 0x40U || ord(c) == 0xFFU)
 #else
-#define ksh_isctrl(c)	((ord(c) & 0x7F) < 0x20 || ord(c) == 0x7F)
+#define ksh_isctrl(c)	((ord(c) & 0x7FU) < 0x20U || ord(c) == 0x7FU)
+#define ksh_asisctrl(c)	(ord(c) < 0x20U || ord(c) == 0x7FU)
 #endif
 /* new fast character classes */
 #define ctype(c,t)	tobool(ksh_ctypes[ord(c)] & (t))
@@ -2453,7 +2454,6 @@ size_t utf_mbtowc(unsigned int *, const char *);
 size_t utf_wctomb(char *, unsigned int);
 int utf_widthadj(const char *, const char **);
 size_t utf_mbswidth(const char *) MKSH_A_PURE;
-const char *utf_skipcols(const char *, int, int *);
 size_t utf_ptradj(const char *) MKSH_A_PURE;
 #ifdef MIRBSD_BOOTFLOPPY
 #define utf_wcwidth(i) wcwidth((wchar_t)(i))
