@@ -193,7 +193,7 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.915 2021/06/21 00:29:32 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.923 2021/06/28 21:46:13 tg Exp $");
 #endif
 #define MKSH_VERSION "R59 2021/05/29"
 
@@ -1102,8 +1102,6 @@ EXTERN const char Tuser_sp2[] E_INIT(" user ");
 #define Twrite (Tshf_write + 4)
 EXTERN const char Tf__S[] E_INIT(" %S");
 #define Tf__d (Tunexpected_type + 22)
-#define Tf_ss (Tf__ss + 1)
-EXTERN const char Tf__ss[] E_INIT(" %s%s");
 #define Tf__sN (Tf_s_s_sN + 5)
 #define Tf_T (Tf_s_T + 3)
 EXTERN const char Tf_dN[] E_INIT("%d\n");
@@ -1265,8 +1263,6 @@ EXTERN const char T_devtty[] E_INIT("/dev/tty");
 #define Twrite "write"
 #define Tf__S " %S"
 #define Tf__d " %d"
-#define Tf_ss "%s%s"
-#define Tf__ss " %s%s"
 #define Tf__sN " %s\n"
 #define Tf_T "%T"
 #define Tf_dN "%d\n"
@@ -1587,9 +1583,11 @@ extern void ebcdic_init(void);
 /* control character foo */
 #ifdef MKSH_EBCDIC
 #define ksh_isctrl(c)	(ord(c) < 0x40U || ord(c) == 0xFFU)
+#define ksh_isctrl8(c)	ksh_isctrl(c)
 #else
 #define ksh_isctrl(c)	((ord(c) & 0x7FU) < 0x20U || ord(c) == 0x7FU)
 #define ksh_asisctrl(c)	(ord(c) < 0x20U || ord(c) == 0x7FU)
+#define ksh_isctrl8(c)	(Flag(FASIS) ? ksh_asisctrl(c) : ksh_isctrl(c))
 #endif
 /* new fast character classes */
 #define ctype(c,t)	tobool(ksh_ctypes[ord(c)] & (t))
@@ -1604,7 +1602,6 @@ extern void ebcdic_init(void);
 #define ksh_numdig(c)	(ord(c) - ORD('0'))
 #define ksh_numuc(c)	(rtt2asc(c) - rtt2asc('A'))
 #define ksh_numlc(c)	(rtt2asc(c) - rtt2asc('a'))
-#define ksh_toctrl(c)	asc2rtt(ord(c) == ORD('?') ? 0x7F : rtt2asc(c) & 0x9F)
 #define ksh_unctrl(c)	asc2rtt(rtt2asc(c) ^ 0x40U)
 
 #ifdef MKSH_SMALL
@@ -2690,6 +2687,9 @@ struct shf *shf_open(const char *, int, int, int);
 struct shf *shf_fdopen(int, int, struct shf *);
 struct shf *shf_reopen(int, int, struct shf *);
 struct shf *shf_sopen(char *, ssize_t, int, struct shf *);
+struct shf *shf_sreopen(char *, ssize_t, Area *, struct shf *);
+int shf_scheck_grow(ssize_t, struct shf *);
+#define shf_scheck(n,shf) ((shf)->wnleft < (ssize_t)(n) && shf_scheck_grow((n), (shf)))
 int shf_close(struct shf *);
 int shf_fdclose(struct shf *);
 char *shf_sclose(struct shf *);
@@ -2733,12 +2733,15 @@ const char *wdscan(const char *, int);
 #define WDS_TPUTS	BIT(0)		/* tputS (dumpwdvar) mode */
 char *wdstrip(const char *, int);
 void tfree(struct op *, Area *);
-void dumpchar(struct shf *, unsigned char);
+#ifdef DEBUG
 void dumptree(struct shf *, struct op *);
 void dumpwdvar(struct shf *, const char *);
-void dumpioact(struct shf *shf, struct op *t);
-void vistree(char *, size_t, struct op *)
-    MKSH_A_BOUNDED(__string__, 1, 2);
+void dumpioact(struct shf *, struct op *);
+#endif
+void uprntc(unsigned char, struct shf *);
+size_t uescmb(unsigned char *, const char **)
+    MKSH_A_BOUNDED(__minbytes__, 1, 5);
+const char *uprntmbs(const char *, bool, struct shf *);
 void fpFUNCTf(struct shf *, int, bool, const char *, struct op *);
 /* var.c */
 void newblock(void);

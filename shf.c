@@ -27,7 +27,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.110 2021/06/21 00:29:33 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/shf.c,v 1.115 2021/06/28 20:57:52 tg Exp $");
 
 /* flags to shf_emptybuf() */
 #define EB_READSW	0x01	/* about to switch to reading */
@@ -226,6 +226,44 @@ shf_sopen(char *buf, ssize_t bsize, int sflags, struct shf *shf)
 	return (shf);
 }
 
+/* Open a string for dynamic writing, using already-allocated buffer */
+struct shf *
+shf_sreopen(char *buf, ssize_t bsize, Area *ap, struct shf *oshf)
+{
+	struct shf *shf;
+
+	shf = shf_sopen(buf, bsize, SHF_WR | SHF_DYNAMIC, oshf);
+	shf->areap = ap;
+	shf->flags |= SHF_ALLOCB;
+	return (shf);
+}
+
+/* Check whether the string can grow to take n bytes, close it up otherwise */
+int
+shf_scheck_grow(ssize_t n, struct shf *shf)
+{
+	if (!(shf->flags & SHF_WR))
+		internal_errorf(Tf_flags, "shf_scheck",
+		    (unsigned int)shf->flags);
+
+	/* if n < 0 we lose in the macro already */
+
+	/* nōn-string can always grow flushing */
+	if (!(shf->flags & SHF_STRING))
+		return (0);
+
+	while (shf->wnleft < n)
+		if (shf_emptybuf(shf, EB_GROW) == -1)
+			break;
+
+	if (shf->wnleft < n) {
+		/* block subsequent writes as we truncate here */
+		shf->wnleft = 0;
+		return (1);
+	}
+	return (0);
+}
+
 /* Flush and close file descriptor, free the shf structure */
 int
 shf_close(struct shf *shf)
@@ -275,10 +313,8 @@ shf_sclose(struct shf *shf)
 	unsigned char *s = shf->buf;
 
 	/* NUL terminate */
-	if (shf->flags & SHF_WR) {
-		shf->wnleft++;
-		shf_putc('\0', shf);
-	}
+	if (shf->flags & SHF_WR)
+		*shf->wp = '\0';
 	if (shf->flags & SHF_ALLOCS)
 		afree(shf, shf->areap);
 	return ((char *)s);
@@ -641,8 +677,8 @@ shf_putchar(int c, struct shf *shf)
 }
 
 /*
- * Write a string. Returns the length of the string if successful, -1
- * if the string could not be written.
+ * Write a string. Returns the length of the string if successful,
+ * less if truncated, and -1 if the string could not be written.
  */
 ssize_t
 shf_puts(const char *s, struct shf *shf)
@@ -653,7 +689,10 @@ shf_puts(const char *s, struct shf *shf)
 	return (shf_write(s, strlen(s), shf));
 }
 
-/* Write a buffer. Returns nbytes if successful, -1 if there is an error. */
+/*
+ * Write a buffer. Returns nbytes if successful, less if truncated
+ * (outputting to string only), and -1 if there is an error.
+ */
 ssize_t
 shf_write(const char *buf, ssize_t nbytes, struct shf *shf)
 {
@@ -681,8 +720,13 @@ shf_write(const char *buf, ssize_t nbytes, struct shf *shf)
 		if (shf->flags & SHF_STRING) {
 			/* resize buffer until there's enough space left */
 			while (nbytes > shf->wnleft)
-				if (shf_emptybuf(shf, EB_GROW) == -1)
-					return (-1);
+				if (shf_emptybuf(shf, EB_GROW) == -1) {
+					/* truncate if possible */
+					if (shf->wnleft == 0)
+						return (-1);
+					nbytes = shf->wnleft;
+					break;
+				}
 			/* then write everything into the buffer */
 		} else {
 			/* flush deals with sticky errors */
@@ -1351,6 +1395,17 @@ ebcdic_init(void)
 		write(2, "mksh: NUL not at position 0\n", 28);
 		exit(255);
 	}
+	/* ensure control characters, i.e. 0x00‥0x3F and 0xFF, map sanely */
+	for (i = 0x00; i < 0x20; ++i)
+		if (!ksh_isctrl(asc2rtt(i)))
+			goto ebcdic_ctrlmis;
+	for (i = 0x7F; i < 0xA0; ++i)
+		if (!ksh_isctrl(asc2rtt(i))) {
+ ebcdic_ctrlmis:
+			write(2, "mksh: control character mismapping\n", 35);
+			exit(255);
+		}
+	/* validate character literals used in the code */
 	if (rtt2asc('\n') != 0x0AU || rtt2asc('\r') != 0x0DU ||
 	    rtt2asc(' ') != 0x20U ||
 	    rtt2asc('!') != 0x21U ||
@@ -1431,6 +1486,41 @@ ebcdic_init(void)
 		write(2, "mksh: compiler vs. runtime codepage mismatch!\n", 46);
 		exit(255);
 	}
+	/* validate sh.h control character literals */
+	if (rtt2asc(CTRL_AT) != 0x00U ||
+	    rtt2asc(CTRL_A) != 0x01U ||
+	    rtt2asc(CTRL_B) != 0x02U ||
+	    rtt2asc(CTRL_C) != 0x03U ||
+	    rtt2asc(CTRL_D) != 0x04U ||
+	    rtt2asc(CTRL_E) != 0x05U ||
+	    rtt2asc(CTRL_F) != 0x06U ||
+	    rtt2asc(CTRL_G) != 0x07U ||
+	    rtt2asc(CTRL_H) != 0x08U ||
+	    rtt2asc(CTRL_I) != 0x09U ||
+	    rtt2asc(CTRL_J) != 0x0AU ||
+	    rtt2asc(CTRL_K) != 0x0BU ||
+	    rtt2asc(CTRL_L) != 0x0CU ||
+	    rtt2asc(CTRL_M) != 0x0DU ||
+	    rtt2asc(CTRL_N) != 0x0EU ||
+	    rtt2asc(CTRL_O) != 0x0FU ||
+	    rtt2asc(CTRL_P) != 0x10U ||
+	    rtt2asc(CTRL_Q) != 0x11U ||
+	    rtt2asc(CTRL_R) != 0x12U ||
+	    rtt2asc(CTRL_S) != 0x13U ||
+	    rtt2asc(CTRL_T) != 0x14U ||
+	    rtt2asc(CTRL_U) != 0x15U ||
+	    rtt2asc(CTRL_V) != 0x16U ||
+	    rtt2asc(CTRL_W) != 0x17U ||
+	    rtt2asc(CTRL_X) != 0x18U ||
+	    rtt2asc(CTRL_Y) != 0x19U ||
+	    rtt2asc(CTRL_Z) != 0x1AU ||
+	    rtt2asc(CTRL_BO) != 0x1BU ||
+	    rtt2asc(CTRL_BK) != 0x1CU ||
+	    rtt2asc(CTRL_BC) != 0x1DU ||
+	    rtt2asc(CTRL_CA) != 0x1EU ||
+	    rtt2asc(CTRL_US) != 0x1FU ||
+	    rtt2asc(CTRL_QM) != 0x7FU)
+		goto ebcdic_ctrlmis;
 }
 #endif
 

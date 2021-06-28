@@ -2,7 +2,7 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2011,
- *		 2012, 2013, 2014, 2015, 2016, 2018, 2019
+ *		 2012, 2013, 2014, 2015, 2016, 2018, 2019, 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -23,7 +23,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.129 2021/05/30 04:42:42 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.133 2021/06/28 21:46:12 tg Exp $");
 
 #if HAVE_KILLPG
 #define mksh_killpg		killpg
@@ -38,6 +38,8 @@ __RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.129 2021/05/30 04:42:42 tg Exp $");
 #define PSIGNALLED	2
 #define PSTOPPED	3
 
+#define PROC_TGTSZ	256
+
 typedef struct proc Proc;
 /* to take alignment into consideration */
 struct proc_dummy {
@@ -45,7 +47,7 @@ struct proc_dummy {
 	pid_t pid;
 	int state;
 	int status;
-	char command[128];
+	char command[PROC_TGTSZ - (ALLOC_OVERHEAD + 32)];
 };
 /* real structure */
 struct proc {
@@ -58,7 +60,7 @@ struct proc {
 	/* wait status */
 	int status;
 	/* process command string from vistree */
-	char command[256 - (ALLOC_OVERHEAD +
+	char command[PROC_TGTSZ - (ALLOC_OVERHEAD +
 	    offsetof(struct proc_dummy, command[0]))];
 };
 
@@ -165,6 +167,9 @@ static int		kill_job(Job *, int);
 
 static void tty_init_talking(void);
 static void tty_init_state(void);
+
+static void vistree(char *, size_t, struct op *)
+    MKSH_A_BOUNDED(__string__, 1, 2);
 
 /* initialise job control */
 void
@@ -834,8 +839,10 @@ j_resume(const char *cp, int bg)
 		return (1);
 	}
 
-	if (bg)
-		shprintf("[%d] ", j->job);
+	if (bg) {
+		shprintf("[%d]", j->job);
+		shf_putc(' ', shl_stdout);
+	}
 
 	running = false;
 	for (p = j->proc_list; p != NULL; p = p->next) {
@@ -846,7 +853,7 @@ j_resume(const char *cp, int bg)
 		}
 		shf_puts(p->command, shl_stdout);
 		if (p->next)
-			shf_puts("| ", shl_stdout);
+			shf_puts(" | ", shl_stdout);
 	}
 	shf_putc('\n', shl_stdout);
 	shf_flush(shl_stdout);
@@ -1619,9 +1626,12 @@ j_print(Job *j, int how, struct shf *shf)
 		}
 
 		if (how != JP_SHORT) {
-			if (p == j->proc_list)
-				shf_fprintf(shf, "[%d] %c ", j->job, jobchar);
-			else
+			if (p == j->proc_list) {
+				shf_fprintf(shf, "[%d]", j->job);
+				shf_putc(' ', shf);
+				shf_putc(jobchar, shf);
+				shf_putc(' ', shf);
+			} else
 				shf_puts(filler, shf);
 		}
 
@@ -1631,35 +1641,46 @@ j_print(Job *j, int how, struct shf *shf)
 		if (how == JP_SHORT) {
 			if (buf[0]) {
 				output = 1;
-#ifdef WCOREDUMP
-				shf_fprintf(shf, "%s%s ",
-				    buf, coredumped ? " (core dumped)" : null);
-#else
 				shf_puts(buf, shf);
-				shf_putc(' ', shf);
+#ifdef WCOREDUMP
+				if (coredumped)
+					shf_puts(" (core dumped)", shf);
 #endif
+				shf_putc(' ', shf);
 			}
 		} else {
 			output = 1;
-			shf_fprintf(shf, "%-20s %s%s%s", buf, p->command,
-			    p->next ? "|" : null,
+			shf_fprintf(shf, "%-20s ", buf);
+			shf_puts(p->command, shf);
+			if (p->next) {
+				shf_putc(' ', shf);
+				shf_putc('|', shf);
+			}
 #ifdef WCOREDUMP
-			    coredumped ? " (core dumped)" :
+			if (coredumped)
+				shf_puts(" (core dumped)", shf);
 #endif
-			     null);
 		}
 
 		state = p->state;
 		status = p->status;
 		p = p->next;
 		while (p && p->state == state && p->status == status) {
-			if (how == JP_LONG)
-				shf_fprintf(shf, "%s%5d %-20s %s%s", filler,
-				    (int)p->pid, T1space, p->command,
-				    p->next ? "|" : null);
-			else if (how == JP_MEDIUM)
-				shf_fprintf(shf, Tf__ss, p->command,
-				    p->next ? "|" : null);
+			switch (how) {
+			case JP_LONG:
+				shf_puts(filler, shf);
+				shf_fprintf(shf, "%5d %-20s",
+				    (int)p->pid, T1space);
+				/* FALLTHROUGH */
+			case JP_MEDIUM:
+				shf_putc(' ', shf);
+				shf_puts(p->command, shf);
+				if (p->next) {
+					shf_putc(' ', shf);
+					shf_putc('|', shf);
+				}
+				break;
+			}
 			p = p->next;
 		}
 	}
@@ -1727,7 +1748,7 @@ j_lookup(const char *cp, int *ecodep)
 		last_match = NULL;
 		for (j = job_list; j != NULL; j = j->next)
 			for (p = j->proc_list; p != NULL; p = p->next)
-				if (strstr(p->command, cp+1) != NULL) {
+				if (strstr(p->command, cp + 1) != NULL) {
 					if (last_match) {
 						if (ecodep)
 							*ecodep = JL_AMBIG;
@@ -1959,4 +1980,39 @@ tty_init_state(void)
 		mksh_tcget(tty_fd, &tty_state);
 		tty_hasstate = true;
 	}
+}
+
+static void
+vistree(char *dst, size_t sz, struct op *t)
+{
+#if 0
+	char *cp;
+	size_t n;
+	char buf[PROC_TGTSZ - 12];
+	char esc[5];
+	char *odst = dst;
+
+	snptreef(buf, sizeof(buf), Tf_T, t);
+	cp = buf;
+	while (*cp) {
+		if ((n = uescmb(esc, (const char **)&cp)) >= sz)
+			break;
+		memcpy(dst, esc, n);
+		sz -= n;
+		dst += n;
+	}
+	while (dst > odst && ctype(dst[-1], C_IFSWS))
+		--dst;
+	*dst = '\0';
+#else
+	char buf[PROC_TGTSZ - 12];
+	struct shf shf;
+
+	snptreef(buf, sizeof(buf), Tf_T, t);
+	shf_sopen(dst, sz, SHF_WR, &shf);
+	uprntmbs(buf, false, &shf);
+	while ((char *)shf.wp > dst && ctype(shf.wp[-1], C_IFSWS))
+		--shf.wp;
+	shf_sclose(&shf);
+#endif
 }
