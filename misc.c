@@ -33,7 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.313 2021/05/30 23:00:48 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.317 2021/06/28 21:46:12 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -463,7 +463,7 @@ parse_args(const char **argv,
 			else if (!strcmp(go.optarg, To_reset)) {
 #if !defined(MKSH_SMALL) || defined(DEBUG)
 				if (!baseline_flags[(int)FNFLAGS]) {
-					bi_errorf(Tf_ss, "too early",
+					bi_errorf("%s%s", "too early",
 					    To_o_reset);
 					return (-1);
 				}
@@ -1497,6 +1497,7 @@ print_value_quoted(struct shf *shf, const char *s)
 	while ((c = *p++) != 0) {
 		if (c == '\'') {
 			if (inquote) {
+				shf_scheck(2, shf);
 				shf_putc('\'', shf);
 				inquote = false;
 			}
@@ -1511,17 +1512,11 @@ print_value_quoted(struct shf *shf, const char *s)
 		shf_putc('\'', shf);
 }
 
-#ifdef MKSH_EBCDIC
-#define dollarq_isctrl8(c)	ksh_isctrl(c)
-#else
-#define dollarq_isctrl8(c)	Flag(FASIS) ? ksh_asisctrl(c) : ksh_isctrl(c)
-#endif
-
-#define dollarq_Uctrl(c)	!ctype(c, C_PRINT)
+#define dollarq_Uctrl(c)	(!ctype((c), C_PRINT))
 #ifndef MKSH_SMALL
 #define dollarq_isctrlU(c)	dollarq_Uctrl(c)
 #else
-#define dollarq_isctrlU(c)	UTFMODE ? dollarq_Uctrl(c) : dollarq_isctrl8(c)
+#define dollarq_isctrlU(c)	(UTFMODE ? dollarq_Uctrl(c) : ksh_isctrl8(c))
 #endif
 
 /* escape with $'...' (!MKSH_SMALL: in UTFMODE) */
@@ -1553,6 +1548,7 @@ dollarqU(struct shf *shf, const unsigned char *s)
 				 * interlinear annotations, LTR/RTL mark,
 				 * U+2028, U+2029, U+2066..U+206F, etc.
 				 */
+				shf_scheck(n, shf);
 				shf_write((const char *)s, n, shf);
 			}
 			s += n;
@@ -1669,7 +1665,7 @@ dollarq8(struct shf *shf, const unsigned char *s)
 			if (0)
 				/* FALLTHROUGH */
 		default:
-			  if (dollarq_isctrl8(c)) {
+			  if (ksh_isctrl8(c)) {
 				/* FALLTHROUGH */
 		case '\'':
 				shf_fprintf(shf, "\\%03o", c);
@@ -2709,7 +2705,7 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 		if (!cstyle)
 			goto unknown_escape;
 		c = (*fg)();
-		wc = ksh_toctrl(c);
+		wc = asc2rtt(ord(c) == ORD('?') ? 0x7F : rtt2asc(c) & 0x9F);
 		break;
 	case 'E':
 	case 'e':
