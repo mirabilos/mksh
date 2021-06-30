@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.226 2021/01/27 15:49:12 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.228 2021/06/29 22:57:45 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -702,9 +702,9 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 			if (!tp->u.fpath) {
  fpath_error:
 				rv = (tp->u2.errnov == ENOENT) ? 127 : 126;
-				warningf(true, Tf_sD_s_sD_s, cp,
-				    Tcant_find, Tfile_fd,
-				    cstrerror(tp->u2.errnov));
+				warningf(true,
+				    "%s: can't find function definition file: %s",
+				    cp, cstrerror(tp->u2.errnov));
 				break;
 			}
 			errno = 0;
@@ -1397,7 +1397,11 @@ call_builtin(struct tbl *tp, const char **wp, const char *where, bool resetspec)
 	shl_stdout_ok = true;
 	ksh_getopt_reset(&builtin_opt, GF_ERROR);
 	rv = (*tp->val.f)(wp);
-	shf_flush(shl_stdout);
+	if (shf_flush(shl_stdout) < 0) {
+		bi_errorf(Tf_sD_s, Twrite, cstrerror(errno));
+		if (rv == 0)
+			rv = 1;
+	}
 	shl_stdout_ok = false;
 	builtin_argv0 = NULL;
 	builtin_spec = false;
