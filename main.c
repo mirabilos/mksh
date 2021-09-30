@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.381 2021/06/29 21:03:29 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.390 2021/09/26 22:29:00 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -45,7 +45,7 @@ __RCSID("$MirOS: src/bin/mksh/main.c,v 1.381 2021/06/29 21:03:29 tg Exp $");
 #define MKSH_DEFAULT_TMPDIR	MKSH_UNIXROOT "/tmp"
 #endif
 
-static uint8_t isuc(const char *);
+static kby isuc(const char *);
 static int main_init(int, const char *[], Source **, struct block **);
 void chvt_reinit(void);
 static void reclaim(void);
@@ -197,10 +197,10 @@ static const char *empty_argv[] = {
 	Tmksh, NULL
 };
 
-static uint8_t
+static kby
 isuc(const char *cx) {
 	char *cp, *x;
-	uint8_t rv = 0;
+	kby rv = 0;
 
 	if (!cx || !*cx)
 		return (0);
@@ -212,7 +212,7 @@ isuc(const char *cx) {
 		++cp;
 
 	/* check for UTF-8 */
-	if (strstr(x, "UTF-8") || strstr(x, "UTF8"))
+	if (vstrstr(x, "UTF-8") || vstrstr(x, "UTF8"))
 		rv = 1;
 
 	/* free copy and out */
@@ -236,6 +236,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 #endif
 
 #if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
+	/* this must come *really* early due to locale use */
 	ebcdic_init();
 #endif
 	set_ifs(TC_IFSWS);
@@ -393,7 +394,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 
 	/*
 	 * Set PATH to def_path (will set the path global variable).
-	 * (import of environment below will probably change this setting).
+	 * Import of environment below will probably change this setting;
+	 * the EXPORT flag is only added via initcoms for this to work.
 	 */
 	vp = global(TPATH);
 	/* setstr can't fail here */
@@ -449,7 +451,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	vp = global("PS1");
 	/* Set PS1 if unset or we are root and prompt doesn't contain a # */
 	if (!(vp->flag & ISSET) ||
-	    (!ksheuid && !strchr(str_val(vp), '#')))
+	    (!ksheuid && !vstrchr(str_val(vp), '#')))
 		/* setstr can't fail here */
 		setstr(vp, safe_prompt, KSH_RETURN_ERROR);
 	setint_n((vp = global("BASHPID")), 0, 10);
@@ -840,7 +842,7 @@ shell(Source * volatile s, volatile int level)
 {
 	struct op *t;
 	volatile bool wastty = tobool(s->flags & SF_TTY);
-	volatile uint8_t attempts = 13;
+	volatile kby attempts = 13;
 	volatile bool interactive = (level == 0) && Flag(FTALKING);
 	volatile bool sfirst = true;
 	Source *volatile old_source = source;
@@ -1859,7 +1861,7 @@ tgrow(struct table *tp)
 }
 
 void
-ktinit(Area *ap, struct table *tp, uint8_t initshift)
+ktinit(Area *ap, struct table *tp, kby initshift)
 {
 	tp->areap = ap;
 	tp->tbls = NULL;
@@ -2000,8 +2002,8 @@ DF(const char *fmt, ...)
 	mksh_TIME(tv);
 	timet2mjd(&mjd, tv.tv_sec);
 	shf_fprintf(shl_dbg, "[%02u:%02u:%02u (%u) %u.%06u] ",
-	    (unsigned)mjd.sec / 3600, ((unsigned)mjd.sec / 60) % 60,
-	    (unsigned)mjd.sec % 60, (unsigned)getpid(),
+	    (unsigned)mjd.sec / 3600U, ((unsigned)mjd.sec / 60U) % 60U,
+	    (unsigned)mjd.sec % 60U, (unsigned)getpid(),
 	    (unsigned)tv.tv_sec, (unsigned)tv.tv_usec);
 	va_start(args, fmt);
 	shf_vfprintf(shl_dbg, fmt, args);
@@ -2021,15 +2023,17 @@ x_mkraw(int fd, mksh_ttyst *ocb, bool forread)
 		mksh_tcget(fd, ocb);
 	else
 		ocb = &tty_state;
+#ifdef FLUSHO
+	ocb->c_lflag &= ~(FLUSHO);
+#endif
 
 	cb = *ocb;
-	if (forread) {
-		cb.c_iflag &= ~(ISTRIP);
-		cb.c_lflag &= ~(ICANON) | ECHO;
-	} else {
-		cb.c_iflag &= ~(INLCR | ICRNL | ISTRIP);
+	cb.c_iflag &= ~(IGNPAR | PARMRK | INLCR | IGNCR | ICRNL | ISTRIP);
+	cb.c_iflag |= BRKINT;
+	if (forread)
+		cb.c_lflag &= ~(ICANON);
+	else
 		cb.c_lflag &= ~(ISIG | ICANON | ECHO);
-	}
 #if defined(VLNEXT) && defined(_POSIX_VDISABLE)
 	/* OSF/1 processes lnext when ~icanon */
 	cb.c_cc[VLNEXT] = _POSIX_VDISABLE;
@@ -2045,6 +2049,9 @@ x_mkraw(int fd, mksh_ttyst *ocb, bool forread)
 }
 
 #ifdef MKSH_ENVDIR
+#if HAVE_SETLOCALE_CTYPE
+# error MKSH_ENVDIR has not been adapted to work with POSIX locale!
+#else
 static void
 init_environ(void)
 {
@@ -2083,7 +2090,7 @@ init_environ(void)
 			while ((n = shf_read(xp, Xnleft(xs, xp), shf)) > 0) {
 				xp += n;
 				if (Xnleft(xs, xp) <= 0)
-					XcheckN(xs, xp, Xlength(xs, xp));
+					XcheckN(xs, xp, 128);
 			}
 			if (n < 0) {
 				warningf(false,
@@ -2105,6 +2112,7 @@ init_environ(void)
 	closedir(dirp);
 	Xfree(xs, xp);
 }
+#endif
 #else
 extern char **environ;
 
@@ -2120,7 +2128,23 @@ init_environ(void)
 	while (*wp != NULL) {
 		rndpush(*wp);
 		typeset(*wp, IMPORT | EXPORT, 0, 0, 0);
+#ifdef notyet
+		if (ord((*wp)[0]) == ORD('L') && (
+		    (ord((*wp)[1]) == ORD('C') && ord((*wp)[2]) == ORD('_')) ||
+		    !strcmp(*wp, "LANG"))) {
+			const char **P;
+
+			/* remove LC_* / LANG from own environment */
+			P = wp;
+			while ((*P = *(P + 1)))
+				++P;
+			/* now setlocale with "" will use the default locale */
+			/* matching the user expectation wrt passed-in vars */
+		} else
+			++wp;
+#else
 		++wp;
+#endif
 	}
 }
 #endif
@@ -2130,7 +2154,7 @@ void
 recheck_ctype(void)
 {
 	const char *ccp;
-	uint8_t old_utfmode = UTFMODE;
+	kby old_utfmode = UTFMODE;
 
 	ccp = str_val(global("LC_ALL"));
 	if (ccp == null)
@@ -2150,5 +2174,26 @@ recheck_ctype(void)
 
 	if (Flag(FPOSIX) && UTFMODE && !old_utfmode)
 		warningf(true, "early locale tracking enabled UTF-8 mode while in POSIX mode, you are now noncompliant");
+}
+#endif
+
+#if !HAVE_MEMMOVE
+void *
+rpl_memmove(void *dst, const void *src, size_t len)
+{
+	const unsigned char *s = src;
+	unsigned char *d = dst;
+
+	if (len) {
+		if (src < dst) {
+			s += len;
+			d += len;
+			while (len--)
+				*--d = *--s;
+		} else
+			while (len--)
+				*d++ = *s++;
+	}
+	return (dst);
 }
 #endif

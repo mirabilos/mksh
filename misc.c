@@ -33,7 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.319 2021/07/28 04:07:54 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.327 2021/09/30 03:20:07 tg Exp $");
 
 #define KSH_CHVT_FLAG
 #ifdef MKSH_SMALL
@@ -569,11 +569,10 @@ getpn(const char **sp, int *ai)
 {
 	char c;
 	const char *s;
-	mksh_ari_u num;
-	uint8_t state = 0;
+	mksh_uari_t num = 0;
+	kby state = 0;
 	bool neg = false;
 
-	num.u = 0;
 	s = *sp;
 
 	do {
@@ -590,19 +589,19 @@ getpn(const char **sp, int *ai)
 	}
 
 	while (ctype(c, C_DIGIT)) {
-		if (num.u > 214748364U)
+		if (num > 214748364U)
 			/* overflow on multiplication */
 			state = 2;
 		if (state < 2) {
 			state = 1;
-			num.u = num.u * 10U + (unsigned int)ksh_numdig(c);
+			num = num * 10U + (unsigned int)ksh_numdig(c);
 		}
-		/* now: num.u <= 2147483649U */
+		/* now: num <= 2147483649U */
 		c = *s++;
 	}
 	--s;
 
-	if (num.u > (neg ? 2147483648U : 2147483647U))
+	if (num > (neg ? 2147483648U : 2147483647U))
 		/* overflow for signed 32-bit int */
 		state = 2;
 
@@ -612,9 +611,9 @@ getpn(const char **sp, int *ai)
 		*ai = 0;
 		return (0);
 	}
-	*ai = (neg && num.u > 0) ?
-	    (mksh_ari_t)(-(mksh_ari_t)((num.u - 1U) & 0x7FFFFFFF) - 1) :
-	    (mksh_ari_t)num.u;
+	*ai = (neg && num > 0) ?
+	    (mksh_ari_t)(-(mksh_ari_t)((num - 1U) & 0x7FFFFFFF) - 1) :
+	    (mksh_ari_t)num;
 	return (1);
 }
 
@@ -626,7 +625,7 @@ getpn(const char **sp, int *ai)
 static void *
 simplify_gmatch_pattern(const unsigned char *sp)
 {
-	uint8_t c;
+	kby c;
 	unsigned char *cp, *dp;
 	const unsigned char *ps, *se;
 
@@ -894,7 +893,7 @@ do_gmatch(const unsigned char *s, const unsigned char *se,
 				return (0);
 			if (UTFMODE) {
 				--s;
-				s += utf_ptradj((const void *)s);
+				s += ez_mbtoc(NULL, (const void *)s);
 			}
 			break;
 
@@ -1255,7 +1254,7 @@ pat_scan(const unsigned char *p, const unsigned char *pe, bool match_sep)
 int
 ascstrcmp(const void *s1, const void *s2)
 {
-	const uint8_t *cp1 = s1, *cp2 = s2;
+	const kby *cp1 = s1, *cp2 = s2;
 
 	while (*cp1 == *cp2) {
 		if (*cp1++ == '\0')
@@ -1492,7 +1491,7 @@ print_value_quoted(struct shf *shf, const char *s)
 	while ((c = *p++) != 0) {
 		if (c == '\'') {
 			if (inquote) {
-				shf_scheck(2, shf);
+				shf_scheck(3, shf);
 				shf_putc('\'', shf);
 				inquote = false;
 			}
@@ -1537,16 +1536,15 @@ dollarqU(struct shf *shf, const unsigned char *s)
 				/* C1 control character */
 				shf_fprintf(shf, "\\u%04X", wc);
 				rv = 2;
+				s += n;
 			} else {
 				/*
 				 * print as-is; we assume the tty DTRT for
 				 * interlinear annotations, LTR/RTL mark,
 				 * U+2028, U+2029, U+2066..U+206F, etc.
 				 */
-				shf_scheck(n, shf);
-				shf_write((const char *)s, n, shf);
+				shf_wr_sm(s, n, shf);
 			}
-			s += n;
 			continue;
 		}
 		++s;
@@ -2395,7 +2393,7 @@ c_cd(const char **wp)
 		 * substitution fails because the cd fails we could try to
 		 * find another substitution. For now, we don't.
 		 */
-		if ((cp = strstr(current_wd, wp[0])) == NULL) {
+		if ((cp = ucstrstr(current_wd, wp[0])) == NULL) {
 			bi_errorf(Tbadsubst);
 			return (2);
 		}
@@ -2588,38 +2586,6 @@ chvt(const Getopt *go)
 }
 #endif
 
-#ifdef DEBUG
-char *
-strchr(char *p, int ch)
-{
-	for (;; ++p) {
-		if (*p == ch)
-			return (p);
-		if (!*p)
-			return (NULL);
-	}
-	/* NOTREACHED */
-}
-
-char *
-strstr(char *b, const char *l)
-{
-	char first, c;
-	size_t n;
-
-	if ((first = *l++) == '\0')
-		return (b);
-	n = strlen(l);
- strstr_look:
-	while ((c = *b++) != first)
-		if (c == '\0')
-			return (NULL);
-	if (strncmp(b, l, n))
-		goto strstr_look;
-	return (b - 1);
-}
-#endif
-
 #if defined(MKSH_SMALL) && !defined(MKSH_SMALL_BUT_FAST)
 char *
 strndup_i(const char *src, size_t len, Area *ap)
@@ -2648,10 +2614,13 @@ strdup_i(const char *src, Area *ap)
 } while (/* CONSTCOND */ 0)
 
 int
-getrusage(int what, struct rusage *ru)
+ksh_getrusage(int what, struct rusage *ru)
 {
 	struct tms tms;
 	clock_t u, s;
+#ifndef CLK_TCK
+	long CLK_TCK;
+#endif
 
 	if (/* ru == NULL || */ times(&tms) == (clock_t)-1)
 		return (-1);
@@ -2669,6 +2638,15 @@ getrusage(int what, struct rusage *ru)
 		errno = EINVAL;
 		return (-1);
 	}
+#ifndef CLK_TCK
+#ifdef ENOSYS
+	errno = ENOSYS;
+#else
+	errno = EINVAL;
+#endif
+	if ((CLK_TCK = sysconf(_SC_CLK_TCK)) == -1L)
+		internal_errorf("sysconf(_SC_CLK_TCK): %s", cstrerror(errno));
+#endif
 	INVTCK(ru->ru_utime, u);
 	INVTCK(ru->ru_stime, s);
 	return (0);
@@ -2805,3 +2783,60 @@ unbksl(bool cstyle, int (*fg)(void), void (*fp)(int))
 
 	return (wc);
 }
+
+#ifdef DEBUG
+#undef strchr
+char *
+ucstrchr(char *s, int c)
+{
+	return (strchr(s, c));
+}
+
+const char *
+cstrchr(const char *s, int c)
+{
+	return (strchr(s, c));
+}
+#endif
+
+#if !HAVE_STRSTR
+char *
+ucstrstr(char *big, const char *little)
+{
+	union mksh_cchack res;
+
+	res.ro = cstrstr(big, little);
+	return (res.rw);
+}
+
+const char *
+cstrstr(const char *big, const char *little)
+{
+	char first, c;
+	size_t n;
+
+	if ((first = *little++) == '\0')
+		return (big);
+	n = strlen(little);
+ strstr_look:
+	while ((c = *big++) != first)
+		if (c == '\0')
+			return (NULL);
+	if (strncmp(big, little, n))
+		goto strstr_look;
+	return (big - 1);
+}
+#elif defined(DEBUG)
+#undef strstr
+char *
+ucstrstr(char *big, const char *little)
+{
+	return (strstr(big, little));
+}
+
+const char *
+cstrstr(const char *big, const char *little)
+{
+	return (strstr(big, little));
+}
+#endif

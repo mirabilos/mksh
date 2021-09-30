@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.255 2021/05/30 04:58:35 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/lex.c,v 1.257 2021/09/30 03:20:06 tg Exp $");
 
 /*
  * states while lexing word
@@ -77,9 +77,9 @@ typedef struct lex_state {
 	/* count open parentheses */
 	short nparen;
 	/* type of this state */
-	uint8_t type;
+	kby type;
 	/* extra flags */
-	uint8_t ls_flags;
+	kby ls_flags;
 } Lex_state;
 #define ls_base		u.base
 #define ls_start	u.start
@@ -153,7 +153,7 @@ getsc_r(int c)
 #define STATE_BSIZE	8
 
 #define PUSH_STATE(s)	do {					\
-	uint8_t state_flags = statep->ls_flags;			\
+	kby state_flags = statep->ls_flags;			\
 	if (++statep == state_info.end)				\
 		statep = push_state_i(&state_info, statep);	\
 	state = statep->type = (s);				\
@@ -597,7 +597,7 @@ yylex(int cf)
 				if (c2 == 0)
 					statep->ls_bool = true;
 				if (!statep->ls_bool) {
-					char ts[4];
+					char ts[5];
 
 					if ((unsigned int)c2 < 0x100) {
 						*wp++ = QCHAR;
@@ -1471,7 +1471,7 @@ getsc_line(Source *s)
 void
 set_prompt(int to, Source *s)
 {
-	cur_prompt = (uint8_t)to;
+	cur_prompt = (kby)to;
 
 	switch (to) {
 	/* command */
@@ -1550,7 +1550,7 @@ pprompt(const char *cp, int ntruncate)
 		delimiter = *cp;
 		cp += 2;
 	}
-	for (; *cp; cp++) {
+	while (*cp) {
 		if (indelimit && *cp != delimiter)
 			;
 		else if (ctype(*cp, C_CR | C_LF)) {
@@ -1565,17 +1565,19 @@ pprompt(const char *cp, int ntruncate)
 			indelimit = !indelimit;
 		else if (UTFMODE && (rtt2asc(*cp) > 0x7F)) {
 			const char *cp2;
+
 			columns += utf_widthadj(cp, &cp2);
 			if (doprint && (indelimit ||
 			    (ntruncate < (x_cols * lines + columns))))
 				shf_write(cp, cp2 - cp, shl_out);
-			cp = cp2 - /* loop increment */ 1;
+			cp = cp2;
 			continue;
 		} else
 			columns++;
 		if (doprint && (*cp != delimiter) &&
 		    (indelimit || (ntruncate < (x_cols * lines + columns))))
 			shf_putc(*cp, shl_out);
+		++cp;
 	}
 	if (doprint)
 		shf_flush(shl_out);
@@ -1605,10 +1607,8 @@ get_brace_var(XString *wsp, char *wp)
 
 				c2 = getsc();
 				ungetsc(c2);
-				if (ord(c2) != ORD(/*{*/ '}')) {
-					ungetsc(c);
+				if (ord(c2) != ORD(/*{*/ '}'))
 					goto out;
-				}
 			}
 			goto ps_common;
 		case PS_SAW_BANG:

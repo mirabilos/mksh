@@ -5,7 +5,7 @@
 /*-
  * Copyright (c) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
  *		 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
- *		 2019, 2020
+ *		 2019, 2020, 2021
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -35,7 +35,7 @@
 #endif
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.386 2021/07/27 04:02:39 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.391 2021/09/30 03:20:05 tg Exp $");
 
 #if HAVE_KILLPG
 /*
@@ -116,7 +116,9 @@ const struct builtin mkshbuiltins[] = {
 	{Tread, c_read},
 	{Tdsgreadonly, c_typeset},
 	{"!realpath", c_realpath},
+#if HAVE_RENAME
 	{"~rename", c_rename},
+#endif
 	{"*=return", c_exitreturn},
 	{Tsghset, c_set},
 	{"*=#shift", c_shift},
@@ -274,8 +276,6 @@ c_print(const char **wp)
 		mksh_ari_t wc;
 		/* output file descriptor (if any) */
 		int fd;
-		/* temporary storage for a multibyte character */
-		char ts[4];
 		/* output word separator */
 		char ws;
 		/* output line separator */
@@ -440,20 +440,13 @@ c_print(const char **wp)
 				break;
 			if (!evaluate(s, &po.wc, KSH_RETURN_ERROR, true))
 				return (1);
-			Xcheck(xs, xp);
-			if (UTFMODE) {
-				po.ts[utf_wctomb(po.ts, po.wc)] = 0;
-				c = 0;
-				do {
-					Xput(xs, xp, po.ts[c]);
-				} while (po.ts[++c]);
-			} else
-				Xput(xs, xp, po.wc & 0xFF);
+			XcheckN(xs, xp, 4);
+			xp += ez_ctomb(xp, po.wc);
 		}
 	} else {
 		s = *wp++;
 		while ((c = *s++) != '\0') {
-			Xcheck(xs, xp);
+			XcheckN(xs, xp, 4);
 			if (po.exp && c == '\\') {
 				s_ptr = s;
 				c = unbksl(false, s_get, s_put);
@@ -474,11 +467,7 @@ c_print(const char **wp)
 					}
 				} else if ((unsigned int)c > 0xFF) {
 					/* generic function returned UCS */
-					po.ts[utf_wctomb(po.ts, c - 0x100)] = 0;
-					c = 0;
-					do {
-						Xput(xs, xp, po.ts[c]);
-					} while (po.ts[++c]);
+					xp += utf_wctomb(xp, c - 0x100);
 					continue;
 				}
 			}
@@ -1673,8 +1662,7 @@ c_read(const char **wp)
 	}
 
 	if ((ccp = cstrchr(*wp, '?')) != NULL) {
-		strdupx(allocd, *wp, ATEMP);
-		allocd[ccp - *wp] = '\0';
+		strndupx(allocd, *wp, ccp - *wp, ATEMP);
 		*wp = allocd;
 		if (isatty(fd)) {
 			/*
@@ -1890,17 +1878,22 @@ c_read(const char **wp)
 		goto c_read_gotword;
 	}
 	if (aschars) {
+		bytesleft = ez_mbtoc(NULL, ccp);
+		if (!bytesleft) {
+			/* got a NUL byte */
+			Xput(xs, xp, '2');
+			Xput(xs, xp, '#');
+			Xput(xs, xp, '0');
+			++ccp;
+			--bytesread;
+			goto c_read_gotword;
+		}
 		Xput(xs, xp, '1');
 		Xput(xs, xp, '#');
-		bytesleft = utf_ptradj(ccp);
 		while (bytesleft && bytesread) {
 			*xp++ = *ccp++;
 			--bytesleft;
 			--bytesread;
-		}
-		if (xp[-1] == '\0') {
-			xp[-1] = '0';
-			xp[-3] = '2';
 		}
 		goto c_read_gotword;
 	}
@@ -2335,13 +2328,15 @@ c_times(const char **wp MKSH_A_UNUSED)
 {
 	struct rusage usage;
 
-	getrusage(RUSAGE_SELF, &usage);
+	if (ksh_getrusage(RUSAGE_SELF, &usage))
+		bi_errorf("getrusage: %s", cstrerror(errno));
 	p_time(shl_stdout, false, usage.ru_utime.tv_sec,
 	    usage.ru_utime.tv_usec, 0, null, T1space);
 	p_time(shl_stdout, false, usage.ru_stime.tv_sec,
 	    usage.ru_stime.tv_usec, 0, null, "\n");
 
-	getrusage(RUSAGE_CHILDREN, &usage);
+	if (ksh_getrusage(RUSAGE_CHILDREN, &usage))
+		bi_errorf("getrusage: %s", cstrerror(errno));
 	p_time(shl_stdout, false, usage.ru_utime.tv_sec,
 	    usage.ru_utime.tv_usec, 0, null, T1space);
 	p_time(shl_stdout, false, usage.ru_stime.tv_sec,
@@ -2364,8 +2359,11 @@ timex(struct op *t, int f, volatile int *xerrok)
 	struct timeval usrtime, systime, tv0, tv1;
 
 	mksh_TIME(tv0);
-	getrusage(RUSAGE_SELF, &ru0);
-	getrusage(RUSAGE_CHILDREN, &cru0);
+	if (ksh_getrusage(RUSAGE_SELF, &ru0) ||
+	    ksh_getrusage(RUSAGE_CHILDREN, &cru0)) {
+		warningf(true, "time: getrusage: %s", cstrerror(errno));
+		return (125);
+	}
 	if (t->left) {
 		/*
 		 * Two ways of getting cpu usage of a command: just use t0
@@ -2381,8 +2379,11 @@ timex(struct op *t, int f, volatile int *xerrok)
 		if (t->left->type == TCOM)
 			tf |= t->left->str[0];
 		mksh_TIME(tv1);
-		getrusage(RUSAGE_SELF, &ru1);
-		getrusage(RUSAGE_CHILDREN, &cru1);
+		if (ksh_getrusage(RUSAGE_SELF, &ru1) ||
+		    ksh_getrusage(RUSAGE_CHILDREN, &cru1)) {
+			warningf(true, "time: getrusage: %s", cstrerror(errno));
+			return (rv);
+		}
 	} else
 		tf = TF_NOARGS;
 
@@ -3209,6 +3210,7 @@ ptest_error(Test_env *te, int ofs, const char *msg)
 		bi_errorf(Tf_s, msg);
 }
 
+#if HAVE_RENAME
 int
 c_rename(const char **wp)
 {
@@ -3232,6 +3234,7 @@ c_rename(const char **wp)
 
 	return (rv);
 }
+#endif
 
 int
 c_realpath(const char **wp)

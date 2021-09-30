@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.235 2021/07/27 00:21:05 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.239 2021/09/30 03:20:04 tg Exp $");
 
 /*
  * string expansion
@@ -99,7 +99,7 @@ utflen(const char *s)
 	if (UTFMODE) {
 		n = 0;
 		while (*s) {
-			s += utf_ptradj(s);
+			s += ez_mbtoc(NULL, s);
 			++n;
 		}
 	} else
@@ -116,7 +116,7 @@ utfincptr(const char *s, mksh_ari_t *lp)
 	const char *cp = s;
 
 	while ((*lp)--)
-		cp += utf_ptradj(cp);
+		cp += ez_mbtoc(NULL, cp);
 	*lp = cp - s;
 }
 
@@ -212,8 +212,8 @@ typedef struct SubType {
 	size_t	base;		/* start position of expanded word */
 	unsigned short stype;	/* [=+-?%#] action after expanded word */
 	short	f;		/* saved value of f (DOPAT, etc) */
-	uint8_t	quotep;		/* saved value of quote (for ${..[%#]..}) */
-	uint8_t	quotew;		/* saved value of quote (for ${..[+-=]..}) */
+	kby	quotep;		/* saved value of quote (for ${..[%#]..}) */
+	kby	quotew;		/* saved value of quote (for ${..[+-=]..}) */
 } SubType;
 
 void
@@ -386,7 +386,7 @@ expand(
 			 */
 				/* skip the { or x (}) */
 				const char *varname = ++sp;
-				unsigned int stype;
+				unsigned int stype /* for GCC */ = 0;
 				int slen = 0;
 
 				/* skip variable */
@@ -1327,13 +1327,7 @@ varsub(Expand *xp, const char *sp, const char *word,
 			/* partial utf_mbswidth reimplementation */
 			sc = 0;
 			while (*p) {
-				if (!UTFMODE ||
-				    (wv.len = utf_mbtowc(&c, p)) == (size_t)-1)
-					/* not UTFMODE or not UTF-8 */
-					c = rtt2asc(*p++);
-				else
-					/* UTFMODE and UTF-8 */
-					p += wv.len;
+				p += ez_mbtowc(&c, p);
 				/* c == char or wchar at p++ */
 				if ((slen = utf_wcwidth(c)) == -1) {
 					/* 646, 8859-1, 10646 C0/C1 */
@@ -1523,7 +1517,7 @@ comsub(Expand *xp, const char *cp, int fn)
 	struct op *t;
 	struct shf *shf;
 	bool doalias = false;
-	uint8_t old_utfmode = UTFMODE;
+	kby old_utfmode = UTFMODE;
 
 	switch (fn) {
 	case COMASUB:
@@ -1646,26 +1640,32 @@ trimsub(char *str, char *pat, int how)
 	switch (how & (STYPE_CHAR | STYPE_DBL)) {
 	case ORD('#'):
 		/* shortest match at beginning */
-		for (p = str; p <= end; p += utf_ptradj(p)) {
-			c = *p; *p = '\0';
+		p = str;
+		do {
+			c = *p;
+			*p = '\0';
 			if (gmatchx(str, pat, false)) {
 				record_match(str);
 				*p = c;
 				return (p);
 			}
 			*p = c;
-		}
+			p += ez_mbtoc(NULL, p);
+		} while (c != '\0');
 		break;
 	case ORD('#') | STYPE_DBL:
 		/* longest match at beginning */
-		for (p = end; p >= str; p--) {
-			c = *p; *p = '\0';
+		p = end;
+		while (p >= str) {
+			c = *p;
+			*p = '\0';
 			if (gmatchx(str, pat, false)) {
 				record_match(str);
 				*p = c;
 				return (p);
 			}
 			*p = c;
+			--p;
 		}
 		break;
 	case ORD('%'):
@@ -1674,14 +1674,7 @@ trimsub(char *str, char *pat, int how)
 		while (p >= str) {
 			if (gmatchx(p, pat, false))
 				goto trimsub_match;
-			if (UTFMODE) {
-				char *op = p;
-				while ((p-- > str) && ((rtt2asc(*p) & 0xC0) == 0x80))
-					;
-				if ((p < str) || (p + utf_ptradj(p) != op))
-					p = op - 1;
-			} else
-				--p;
+			p = ez_bs(p - 1, str);
 		}
 		break;
 	case ORD('%') | STYPE_DBL:
@@ -2016,7 +2009,7 @@ alt_expand(XPtrV *wp, char *start, char *exp_start, char *end, int fdo)
 	char *p = exp_start;
 
 	/* search for open brace */
-	while ((p = strchr(p, MAGIC)) && ord(p[1]) != ORD('{' /*}*/))
+	while ((p = ucstrchr(p, MAGIC)) && ord(p[1]) != ORD('{' /*}*/))
 		p += 2;
 	brace_start = p;
 

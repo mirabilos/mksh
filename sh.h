@@ -202,9 +202,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.930 2021/07/27 04:02:40 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.943 2021/09/30 21:31:03 tg Exp $");
 #endif
-#define MKSH_VERSION "R59 2021/06/29"
+#define MKSH_VERSION "R59 2021/09/29"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -215,6 +215,11 @@ typedef unsigned int uint32_t;
 typedef u_int32_t uint32_t;
 #endif
 #endif
+
+/* shell types */
+typedef unsigned char kby;		/* byte */
+typedef unsigned long kul;		/* long, arithmetic */
+typedef signed long ksl;		/* signed long, arithmetic */
 
 /* arithmetic types: shell arithmetics */
 #ifdef MKSH_LEGACY_MODE
@@ -246,15 +251,6 @@ typedef unsigned char mksh_bool;
 #define true		1
 /* make any-type into bool or short */
 #define tobool(cond)	((cond) ? true : false)
-
-/* char (octet) type: C implementation */
-#if !HAVE_CAN_INT8TYPE
-#if !HAVE_CAN_UCBINT8
-typedef unsigned char uint8_t;
-#else
-typedef u_int8_t uint8_t;
-#endif
-#endif
 
 /* other standard types */
 
@@ -317,8 +313,8 @@ typedef MKSH_TYPEDEF_SSIZE_T ssize_t;
 
 /* extra types */
 
-/* getrusage does not exist on OS/2 kLIBC */
-#if !HAVE_GETRUSAGE && !defined(__OS2__)
+/* getrusage does not exist on OS/2 kLIBC and is stubbed on SerenityOS */
+#if !HAVE_GETRUSAGE
 #undef rusage
 #undef RUSAGE_SELF
 #undef RUSAGE_CHILDREN
@@ -330,6 +326,10 @@ struct rusage {
 	struct timeval ru_utime;
 	struct timeval ru_stime;
 };
+
+extern int ksh_getrusage(int, struct rusage *);
+#else
+#define ksh_getrusage getrusage
 #endif
 
 /* extra macros */
@@ -441,6 +441,19 @@ struct rusage {
 
 #define ksh_sigmask(sig) (((sig) < 1 || (sig) > 127) ? 255 : 128 + (sig))
 
+#if HAVE_SIGACTION
+typedef struct sigaction ksh_sigsaved;
+#define ksh_sighandler(saved) (saved.sa_handler)
+void ksh_sigrestore(int, ksh_sigsaved *);
+#else
+typedef sig_t ksh_sigsaved;
+#define ksh_sighandler(saved) (saved)
+#define ksh_sigrestore(s,svp) ksh_sigset((s), *(svp), NULL)
+#endif
+
+/* contract: masks the signal, may restart, not oneshot */
+void ksh_sigset(int, sig_t, ksh_sigsaved *);
+
 
 /* OS-dependent additions (functions, variables, by OS) */
 
@@ -481,13 +494,10 @@ extern int flock(int, int);
 #define mksh_TIME(tv) gettimeofday(&(tv), NULL)
 #endif
 
-#if !HAVE_GETRUSAGE
-extern int getrusage(int, struct rusage *);
-#endif
-
 #if !HAVE_MEMMOVE
-/* we assume either memmove or bcopy exist, at the moment */
-#define memmove(dst,src,len)	bcopy((src), (dst), (len))
+#undef memmove
+#define memmove rpl_memmove
+void *rpl_memmove(void *, const void *, size_t);
 #endif
 
 #if !HAVE_REVOKE_DECL
@@ -579,6 +589,10 @@ extern int __cdecl setegid(gid_t);
 
 /* define bit in flag */
 #define BIT(i)		(1U << (i))
+/* check bit(s) */
+#define HAS(v,f)	(((v) & (f)) == (f))
+#define IS(v,f,t)	(((v) & (f)) == (t))
+/* array sizing */
 #define NELEM(a)	(sizeof(a) / sizeof((a)[0]))
 
 /*
@@ -635,44 +649,25 @@ union mksh_ccphack {
 	const char **ro;
 };
 
-/*
- * Evil hack since casting uint to sint is implementation-defined
- */
-typedef union {
-	mksh_ari_t i;
-	mksh_uari_t u;
-} mksh_ari_u;
-
 /* for const debugging */
-#if defined(DEBUG) && defined(__GNUC__) && !defined(__ICC) && \
-    !defined(__INTEL_COMPILER) && !defined(__SUNPRO_C)
+#if defined(DEBUG)
 char *ucstrchr(char *, int);
-char *ucstrstr(char *, const char *);
-#undef strchr
-#define strchr ucstrchr
-#define strstr ucstrstr
-#define cstrchr(s,c) ({			\
-	union mksh_cchack in, out;	\
-					\
-	in.ro = (s);			\
-	out.rw = ucstrchr(in.rw, (c));	\
-	(out.ro);			\
-})
-#define cstrstr(b,l) ({			\
-	union mksh_cchack in, out;	\
-					\
-	in.ro = (b);			\
-	out.rw = ucstrstr(in.rw, (l));	\
-	(out.ro);			\
-})
-#define vstrchr(s,c)	(cstrchr((s), (c)) != NULL)
-#define vstrstr(b,l)	(cstrstr((b), (l)) != NULL)
-#else /* !DEBUG, !gcc */
+const char *cstrchr(const char *, int);
+#define strchr		poisoned_strchr
+#else
+#define ucstrchr(s,c)	strchr((s), (c))
 #define cstrchr(s,c)	((const char *)strchr((s), (c)))
-#define cstrstr(s,c)	((const char *)strstr((s), (c)))
-#define vstrchr(s,c)	(strchr((s), (c)) != NULL)
-#define vstrstr(b,l)	(strstr((b), (l)) != NULL)
 #endif
+#define vstrchr(s,c)	(cstrchr((s), (c)) != NULL)
+#if defined(DEBUG) || !HAVE_STRSTR
+char *ucstrstr(char *, const char *);
+const char *cstrstr(const char *, const char *);
+#define strstr		poisoned_strstr
+#else
+#define ucstrstr(s,c)	strstr((s), (c))
+#define cstrstr(s,c)	((const char *)strstr((s), (c)))
+#endif
+#define vstrstr(b,l)	(cstrstr((b), (l)) != NULL)
 
 #if defined(DEBUG) || defined(__COVERITY__)
 #ifndef DEBUG_LEAKS
@@ -693,10 +688,6 @@ im_sorry_dave(void)
 
 /* use this ipv strchr(s, 0) but no side effects in s! */
 #define strnul(s)	((s) + strlen((const void *)s))
-
-#define utf_ptradjx(src,dst) do {					\
-	(dst) = (src) + utf_ptradj(src);				\
-} while (/* CONSTCOND */ 0)
 
 #if defined(MKSH_SMALL) && !defined(MKSH_SMALL_BUT_FAST)
 #define strdupx(d,s,ap) do {						\
@@ -896,8 +887,8 @@ extern struct env {
 	/* saved parser recursion state */
 	struct yyrecursive_state *yyrecursive_statep;
 	kshjmp_buf jbuf;	/* long jump back to env creator */
-	uint8_t type;		/* environment type - see below */
-	uint8_t flags;		/* EF_* */
+	kby type;		/* environment type - see below */
+	kby flags;		/* EF_* */
 } *e;
 
 /* struct env.type values */
@@ -942,9 +933,9 @@ EXTERN int exstat;		/* exit status */
 EXTERN int subst_exstat;	/* exit status of last $(..)/`..` */
 EXTERN struct tbl *vp_pipest;	/* global PIPESTATUS array */
 EXTERN short trap_exstat;	/* exit status before running a trap */
-EXTERN uint8_t trap_nested;	/* running nested traps */
-EXTERN uint8_t shell_flags[FNFLAGS];
-EXTERN uint8_t baseline_flags[FNFLAGS
+EXTERN kby trap_nested;		/* running nested traps */
+EXTERN kby shell_flags[FNFLAGS];
+EXTERN kby baseline_flags[FNFLAGS
 #if !defined(MKSH_SMALL) || defined(DEBUG)
     + 1
 #endif
@@ -1319,7 +1310,7 @@ EXTERN const char T_devtty[] E_INIT("/dev/tty");
 #define T_devtty "/dev/tty"
 #endif /* end of string pooling */
 
-typedef uint8_t Temp_type;
+typedef kby Temp_type;
 /* expanded heredoc */
 #define TT_HEREDOC_EXP	0
 /* temporary file used for history editing (fc -e) */
@@ -1613,7 +1604,6 @@ extern void ebcdic_init(void);
 #define ksh_numdig(c)	(ord(c) - ORD('0'))
 #define ksh_numuc(c)	(rtt2asc(c) - rtt2asc('A'))
 #define ksh_numlc(c)	(rtt2asc(c) - rtt2asc('a'))
-#define ksh_unctrl(c)	asc2rtt(rtt2asc(c) ^ 0x40U)
 
 #ifdef MKSH_SMALL
 #define SMALLP(x)	/* nothing */
@@ -1715,8 +1705,23 @@ EXTERN mksh_ari_t x_lins E_INIT(24);
 				    (shf)->rnleft--, (int)ord(*(shf)->rp++) : \
 				    shf_getchar(shf))
 #define shf_putc_i(c,shf)	((shf)->wnleft == 0 ? \
-				    shf_putchar((uint8_t)(c), (shf)) : \
+				    shf_putchar((kby)(c), (shf)) : \
 				    ((shf)->wnleft--, *(shf)->wp++ = (c)))
+/*
+ * small strings (e.g. one multibyte character) only, atomically
+ * no side effects in arguments please; does s+=n; may do n=0
+ */
+#define shf_wr_sm(s,n,shf)	do {				\
+	if ((shf)->wnleft < (ssize_t)(n)) {			\
+		shf_scheck_grow((n), (shf));			\
+		shf_write((const void *)(s), (n), (shf));	\
+		(s) += (n);					\
+	} else {						\
+		(shf)->wnleft -= n;				\
+		while ((n)--)					\
+			*(shf)->wp++ = *(s)++;			\
+	}							\
+} while (/* CONSTCOND */ 0)
 #define shf_eof(shf)		((shf)->flags & SHF_EOF)
 #define shf_error(shf)		((shf)->flags & SHF_ERROR)
 #define shf_errno(shf)		((shf)->errnosv)
@@ -1765,7 +1770,7 @@ struct table {
 	Area *areap;		/* area to allocate entries */
 	struct tbl **tbls;	/* hashed table items */
 	size_t nfree;		/* free table entries */
-	uint8_t tshift;		/* table size (2^tshift) */
+	kby tshift;		/* table size (2^tshift) */
 };
 
 /* table item */
@@ -1947,7 +1952,7 @@ EXTERN char *path;		/* copy of either PATH or def_path */
 EXTERN const char *def_path;	/* path to use if PATH not set */
 EXTERN char *tmpdir;		/* TMPDIR value */
 EXTERN const char *prompt;
-EXTERN uint8_t cur_prompt;	/* PS1 or PS2 */
+EXTERN kby cur_prompt;		/* PS1 or PS2 */
 EXTERN int current_lineno;	/* LINENO value */
 
 /*
@@ -2458,11 +2463,20 @@ int herein(struct ioword *, char **);
 int evaluate(const char *, mksh_ari_t *, int, bool);
 int v_evaluate(struct tbl *, const char *, volatile int, bool);
 /* UTF-8 stuff */
+char *ez_bs(char *, char *);
 size_t utf_mbtowc(unsigned int *, const char *);
 size_t utf_wctomb(char *, unsigned int);
+#define OPTUISRAW(wc) IS(wc, 0xFFFFFF80U, 0x00200080U)
+#define OPTUMKRAW(ch) (ord(ch) | 0x00200000U)
+#if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC)
+size_t ez_mbtowc(unsigned int *, const char *);
+#else
+#define ez_mbtowc ez_mbtoc
+#endif
+size_t ez_mbtoc(unsigned int *, const char *);
+size_t ez_ctomb(char *, unsigned int);
 int utf_widthadj(const char *, const char **);
 size_t utf_mbswidth(const char *) MKSH_A_PURE;
-size_t utf_ptradj(const char *) MKSH_A_PURE;
 #ifdef MIRBSD_BOOTFLOPPY
 #define utf_wcwidth(i) wcwidth((wchar_t)(i))
 #else
@@ -2638,7 +2652,7 @@ void coproc_write_close(int);
 int coproc_getfd(int, const char **);
 void coproc_cleanup(int);
 struct temp *maketemp(Area *, Temp_type, struct temp **);
-void ktinit(Area *, struct table *, uint8_t);
+void ktinit(Area *, struct table *, kby);
 struct tbl *ktscan(struct table *, const char *, uint32_t, struct tbl ***);
 /* table, name (key) to search for, hash(n) */
 #define ktsearch(tp,s,h) ktscan((tp), (s), (h), NULL)
@@ -2751,8 +2765,11 @@ void dumpwdvar(struct shf *, const char *);
 void dumpioact(struct shf *, struct op *);
 #endif
 void uprntc(unsigned char, struct shf *);
-size_t uescmb(unsigned char *, const char **)
+#ifndef MKSH_NO_CMDLINE_EDITING
+void uescmbT(unsigned char *, const char **)
     MKSH_A_BOUNDED(__minbytes__, 1, 5);
+int uwidthmbT(char *, char **);
+#endif
 const char *uprntmbs(const char *, bool, struct shf *);
 void fpFUNCTf(struct shf *, int, bool, const char *, struct op *);
 /* var.c */
@@ -2911,7 +2928,7 @@ int getdrvwd(char **, unsigned int);
 #else
 #define mksh_abspath(s)			(ord((s)[0]) == ORD('/'))
 #define mksh_cdirsep(c)			(ord(c) == ORD('/'))
-#define mksh_sdirsep(s)			strchr((s), '/')
+#define mksh_sdirsep(s)			ucstrchr((s), '/')
 #define mksh_vdirsep(s)			vstrchr((s), '/')
 #endif
 

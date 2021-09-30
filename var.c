@@ -29,7 +29,14 @@
 #include <sys/sysctl.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/var.c,v 1.245 2021/07/27 01:24:16 tg Exp $");
+#if HAVE_SYS_PTEM_H
+/* prerequisite */
+#include <sys/stream.h>
+/* struct winsize */
+#include <sys/ptem.h>
+#endif
+
+__RCSID("$MirOS: src/bin/mksh/var.c,v 1.252 2021/09/30 03:20:12 tg Exp $");
 
 /*-
  * Variables
@@ -45,6 +52,14 @@ static struct table specials;
 static uint32_t lcg_state = 5381, qh_state = 4711;
 /* may only be set by typeset() just before call to array_index_calc() */
 static enum namerefflag innermost_refflag = SRF_NOP;
+
+/*
+ * Evil hack since casting uint to sint is implementation-defined
+ */
+typedef union {
+	mksh_ari_t i;
+	mksh_uari_t u;
+} mksh_ari_u;
 
 static void c_typeset_vardump(struct tbl *, uint32_t, int, int, bool, bool);
 static void c_typeset_vardump_recursive(struct block *, uint32_t, int, bool,
@@ -415,21 +430,17 @@ str_val(struct tbl *vp)
 			n = (vp->val.i < 0) ? -vp->val.u : vp->val.u;
 		base = (vp->type == 0) ? 10U : (unsigned int)vp->type;
 
-		if (base == 1 && n == 0)
-			base = 2;
 		if (base == 1) {
-			size_t sz = 1;
-
-			*(s = strbuf) = '1';
+			s = strbuf;
 			s[1] = '#';
-			if (!UTFMODE)
-				s[2] = (unsigned char)n;
-			else if ((n & 0xFF80) == 0xEF80)
-				/* OPTU-16 -> raw octet */
-				s[2] = asc2rtt(n & 0xFF);
-			else
-				sz = utf_wctomb(s + 2, n);
-			s[2 + sz] = '\0';
+			if (n == 0) {
+				s[0] = '2';
+				s[2] = '0';
+				s[3] = '\0';
+			} else {
+				s[0] = '1';
+				s[2 + ez_ctomb(s + 2, n)] = '\0';
+			}
 		} else {
 			*--s = '\0';
 			do {
@@ -585,16 +596,7 @@ getnum(const char *s, mksh_ari_u *nump, bool arith, bool psxoctal)
 				/* mksh-specific extension */
 				unsigned int wc;
 
-				if (!UTFMODE)
-					wc = *(const unsigned char *)s;
-				else if (utf_mbtowc(&wc, s) == (size_t)-1)
-					/* OPTU-8 -> OPTU-16 */
-					/*
-					 * (with a twist: 1#\uEF80 converts
-					 * the same as 1#\x80 does, thus is
-					 * not round-tripping correctly XXX)
-					 */
-					wc = 0xEF00 + rtt2asc(*s);
+				ez_mbtoc(&wc, s);
 				nump->u = (mksh_uari_t)wc;
 				return (1);
 			} else if (base > 36)
@@ -692,7 +694,7 @@ formatstr(struct tbl *vp, const char *s)
 				--qq;
 				--slen;
 			}
-			if (vp->flag & ZEROFIL && vp->flag & INTEGER) {
+			if (HAS(vp->flag, ZEROFIL | INTEGER)) {
 				if (!s[0] || !s[1])
 					goto uhm_no;
 				if (s[1] == '#')
@@ -922,6 +924,10 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 	innermost_refflag = new_refflag;
 	vp = (set & LOCAL) ? local(tvar, tobool(set & LOCAL_COPY)) :
 	    global(tvar);
+	/* when importing environment, resolve duplicates as first-wins */
+	/* the EXPORT check is to permit overwriting the default $PATH */
+	if ((set & IMPORT) && (vp->flag & (ISSET | EXPORT)) == (ISSET | EXPORT))
+		return (NULL);
 	if (new_refflag == SRF_DISABLE && (vp->flag & (ARRAY|ASSOC)) == ASSOC)
 		vp->flag &= ~ASSOC;
 	else if (new_refflag == SRF_ENABLE) {
@@ -1184,6 +1190,21 @@ is_wdvarassign(const char *s)
 	    (p[1] == '=' || (p[1] == '+' && p[2] == CHAR && p[3] == '=')));
 }
 
+/* don’t leak internal hash table order */
+static int
+envsort(const void *a, const void *b)
+{
+	const kby *cp1 = *(const kby * const *)a;
+	const kby *cp2 = *(const kby * const *)b;
+
+	while (*cp1 == *cp2) {
+		if (*cp1 == '=' || *cp1++ == '\0')
+			return (0);
+		++cp2;
+	}
+	return ((int)asciibetical(*cp1) - (int)asciibetical(*cp2));
+}
+
 /*
  * Make the exported environment from the exported names in the dictionary.
  */
@@ -1232,6 +1253,7 @@ makenv(void)
 		if (l->flags & BF_STOPENV)
 			break;
 	}
+	qsort(XPptrv(denv), XPsize(denv), sizeof(void *), envsort);
 	XPput(denv, NULL);
 	return ((char **)XPclose(denv));
 }
@@ -2167,7 +2189,6 @@ c_typeset_vardump(struct tbl *vp, uint32_t flag, int thing, int any_set,
     bool pflag, bool istset)
 {
 	struct tbl *tvp;
-	char *s;
 
 	if (!vp)
 		return;
@@ -2199,6 +2220,8 @@ c_typeset_vardump(struct tbl *vp, uint32_t flag, int thing, int any_set,
 		/* optimise later conditionals */
 		any_set = 0;
 	do {
+		bool baseone = false;
+
 		/*
 		 * Ignore array elements that aren't set unless there
 		 * are no set elements, in which case the first is
@@ -2220,8 +2243,13 @@ c_typeset_vardump(struct tbl *vp, uint32_t flag, int thing, int any_set,
 			shprintf(Tf_s_, Ttypeset);
 			if (((vp->flag & (ARRAY | ASSOC)) == ASSOC))
 				shprintf(Tf__c_, 'n');
-			if ((vp->flag & INTEGER))
-				shprintf(Tf__c_, 'i');
+			if ((vp->flag & INTEGER)) {
+				if (vp->type == 1) {
+					baseone = true;
+					shf_puts("-i1 ", shl_stdout);
+				} else
+					shprintf(Tf__c_, 'i');
+			}
 			if ((vp->flag & EXPORT))
 				shprintf(Tf__c_, 'x');
 			if ((vp->flag & RDONLY))
@@ -2249,13 +2277,20 @@ c_typeset_vardump(struct tbl *vp, uint32_t flag, int thing, int any_set,
 			shprintf("[%lu]", arrayindex(vp));
 		if ((!thing && !flag && pflag) ||
 		    (thing == '-' && (vp->flag & ISSET))) {
-			s = str_val(vp);
 			shf_putc('=', shl_stdout);
-			/* AT&T ksh can't have justified integers... */
-			if ((vp->flag & (INTEGER | LJUST | RJUST)) == INTEGER)
-				shf_puts(s, shl_stdout);
-			else
-				print_value_quoted(shl_stdout, s);
+			if (baseone)
+				shprintf(vp->val.u > 0xFF ? "16#%04X" :
+				    "16#%02X", (unsigned int)vp->val.u);
+			else {
+				const char *s = str_val(vp);
+
+				/* AT&T ksh can't have justified integers... */
+				if (IS(vp->flag, INTEGER | LJUST | RJUST,
+				    INTEGER))
+					shf_puts(s, shl_stdout);
+				else
+					print_value_quoted(shl_stdout, s);
+			}
 		}
 		shf_putc('\n', shl_stdout);
 
