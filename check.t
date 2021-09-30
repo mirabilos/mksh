@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.866 2021/07/27 19:17:14 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.877 2021/09/30 03:20:00 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright Â© 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R59 2021/06/29
+	KSH R59 2021/09/29
 description:
 	Check base version of full shell
 stdin:
@@ -136,8 +136,36 @@ stdin:
 	print '#!'"$__progname"'\necho tf' >lq
 	chmod +x lq
 	./lq
+	echo = $?
 expected-stdout:
 	tf
+	= 0
+---
+name: selftest-exec-perl
+description:
+	Ensure we can run perl scriptlets in tests as well
+stdin:
+	print '#!'"$__perlname"'\nprint 3x"3"."\\n";' >lq
+	chmod +x lq
+	./lq
+	echo = $?
+expected-stdout:
+	333
+	= 0
+---
+name: selftest-exec-a
+description:
+	Ensure using 'exec -a' to change argv[0] works
+file-setup: file 644 "pass"
+	print -r -- "fail, args:"
+	i=-1
+	for x in "$0" "$@"; do
+		print -r -- "$((++i))<$x>"
+	done
+stdin:
+	exec -a -print "$__progname" pass '\u20AC'
+expected-stdout:
+	pass â‚¬
 ---
 name: selftest-env
 description:
@@ -150,7 +178,7 @@ name: selftest-direct-builtin-call
 description:
 	Check that direct builtin calls work
 stdin:
-	ln -s "$__progname" echo || cp "$__progname" echo
+	ln -s "$__progname" echo 2>/dev/null || cp "$__progname" echo
 	./echo -c 'echo  foo'
 expected-stdout:
 	-c echo  foo
@@ -174,6 +202,25 @@ stdin:
 	"$__progname" -c 'print -r -- $PATHSEP'
 expected-stdout:
 	;
+---
+name: selftest-tools
+description:
+	Check that relevant tools work as expected. If not, e.g. on SerenityOS,
+	install better tools from ports and prepend /usr/local/bin to $PATH.
+stdin:
+	echo foobarbaz | grep bar
+	echo = $?
+	echo abc | sed y/ac/AC/
+	echo = $?
+	echo abc | tr ac AC
+	echo = $?
+expected-stdout:
+	foobarbaz
+	= 0
+	AbC
+	= 0
+	AbC
+	= 0
 ---
 name: selftest-tty-absent
 description:
@@ -1401,10 +1448,10 @@ name: cd-pe
 description:
 	Check package for cd -Pe
 need-pass: no
-# the mv command fails on Cygwin and z/OS
+# the mv command fails on Cygwin, LynxOS 3.0, z/OS
 # Hurd aborts the testsuite (permission denied)
 # QNX does not find subdir to cd into
-category: !os:cygwin,!os:gnu,!os:midipix,!os:msys,!os:nto,!os:os390,!nosymlink
+category: !os:cygwin,!os:gnu,!os:lynxos,!os:midipix,!os:msys,!os:nto,!os:os390,!nosymlink
 file-setup: file 644 "x"
 	mkdir noread noread/target noread/target/subdir
 	ln -s noread link
@@ -2011,7 +2058,7 @@ expected-stdout:
 name: eglob-bad-1
 description:
 	Check that globbing isn't done when glob has syntax error
-category: !os:cygwin,!os:midipix,!os:msys,!os:os2
+category: !os:cygwin,!os:lynxos,!os:midipix,!os:msys,!os:os2
 file-setup: file 644 "@(a[b|)c]foo"
 stdin:
 	echo @(a[b|)c]*
@@ -4143,7 +4190,7 @@ description:
 category: stdout-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -4167,7 +4214,7 @@ description:
 category: stdout-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -4199,7 +4246,7 @@ description:
 category: stdout-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -4232,7 +4279,7 @@ description:
 category: !no-stderr-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -4254,7 +4301,7 @@ description:
 category: !no-stderr-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -4283,7 +4330,7 @@ description:
 category: !no-stderr-ed
 need-ctty: yes
 need-pass: no
-arguments: !-i!
+arguments: !-ie!
 env-setup: !ENV=./Env!HISTFILE=hist.file!
 file-setup: file 644 "Env"
 	PS1=X
@@ -6171,6 +6218,8 @@ expected-stdout:
 name: regression-33
 description:
 	Does umask print a leading 0 when umask is 3 digits?
+# prints 0600â€¦
+category: !os:skyos
 stdin:
 	# on MiNT, the first umask call seems to fail
 	umask 022
@@ -7838,25 +7887,35 @@ expected-stdout:
 ---
 name: exit-enoent-1
 description:
-	SUSv4 says that the shell should exit with 126/127 in some situations
+	SUSv4 says that the shell should exit with 127 in some situations
 stdin:
-	i=0
 	(echo; echo :) >x
-	"$__progname" ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
-	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
+	"$__progname" ./x >/dev/null 2>&1; r=$?; echo 0 $r .
 	echo exit 42 >x
-	"$__progname" ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
-	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
+	"$__progname" ./x >/dev/null 2>&1; r=$?; echo 42 $r .
 	rm -f x
-	"$__progname" ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
-	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo $((i++)) $r .
+	"$__progname" ./x >/dev/null 2>&1; r=$?; echo notexist $r .
 expected-stdout:
 	0 0 .
-	1 126 .
-	2 42 .
-	3 126 .
-	4 127 .
-	5 127 .
+	42 42 .
+	notexist 127 .
+---
+name: exit-enoent-2
+description:
+	SUSv4 says that the shell should exit with 126 in some situations
+# fails because x permissions handled wrong
+category: !os:skyos
+stdin:
+	(echo; echo :) >x
+	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo 0 $r .
+	echo exit 42 >x
+	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo 42 $r .
+	rm -f x
+	"$__progname" -c ./x >/dev/null 2>&1; r=$?; echo notexist $r .
+expected-stdout:
+	0 126 .
+	42 126 .
+	notexist 127 .
 ---
 name: exit-eval-1
 description:
@@ -7898,6 +7957,8 @@ expected-stdout:
 name: exit-stdout-1
 description:
 	cf. https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=990265, Austin ML
+# SIGPIPE seems hosed on BeOS and SkyOS
+category: !os:beos,!os:skyos
 stdin:
 	if test -c /dev/full && test -w /dev/full; then
 		if pwd >/dev/full 2>e; then
@@ -7933,8 +7994,9 @@ expected-stdout-pattern:
 name: exit-stdout-2
 description:
 	same, except for external utility / direct builtin call
+category: !os:beos,!os:skyos
 stdin:
-	ln -s "$__progname" pwd || cp "$__progname" pwd
+	ln -s "$__progname" pwd 2>/dev/null || cp "$__progname" pwd
 	if test -c /dev/full && test -w /dev/full; then
 		if ./pwd >/dev/full 2>e; then
 			cat e
@@ -8556,7 +8618,7 @@ stdin:
 	[[ -o !sh ]] && echo nosh
 	[[ -o braceexpand ]] && echo brex
 	[[ -o !braceexpand ]] && echo nobrex
-	[[ $(exec -a -set "$__progname" -o) = *login+(' ')on* ]]; echo $?
+	:
 expected-stdout:
 	nosh
 	brex
@@ -8569,6 +8631,15 @@ expected-stdout:
 	a b c
 	sh
 	brex
+---
+name: sh-mode-1-exec-a
+description:
+	Was part of sh-mode-1 but exclude where selftest-exec-a fails
+	or better fix that
+category: !os:beos
+stdin:
+	[[ $(exec -a -set "$__progname" -o) = *login+(' ')on* ]]; echo $?
+expected-stdout:
 	0
 ---
 name: sh-mode-2a
@@ -8577,7 +8648,7 @@ description:
 category: !binsh
 stdin:
 	for shell in {,-}{,r}{,k,mk}sh {,-}{,R}{,K,MK}SH.EXE; do
-		ln -s "$__progname" ./$shell || cp "$__progname" ./$shell
+		ln -s "$__progname" ./$shell 2>/dev/null || cp "$__progname" ./$shell
 		print -- $shell $(./$shell +l -c '
 			[[ -o sh || -o posix ]] && echo sh
 			[[ -o !sh && -o !posix ]] && echo nosh
@@ -8616,7 +8687,7 @@ description:
 category: binsh
 stdin:
 	for shell in {,-}{,r}{,k,mk}sh {,-}{,R}{,K,MK}SH.EXE; do
-		ln -s "$__progname" ./$shell || cp "$__progname" ./$shell
+		ln -s "$__progname" ./$shell 2>/dev/null || cp "$__progname" ./$shell
 		print -- $shell $(./$shell +l -c '
 			[[ -o sh || -o posix ]] && echo sh
 			[[ -o !sh && -o !posix ]] && echo nosh
@@ -10091,7 +10162,6 @@ expected-stdout:
 name: varexpand-funny-chars
 description:
 	Check some characters
-	XXX \uEF80 is asymmetric, possibly buggy so we donâ€™t check this
 stdin:
 	x=$'<\x00>'; typeset -p x
 	x=$'<\x01>'; typeset -p x
@@ -10555,15 +10625,15 @@ stdin:
 	echo "specX <${tv1#16#}> <${tv2#16#}> <${tv3#16#}> <${tv4#16#}> <${tv5#16#}> <${tv6#16#}> <${tv7#16#}> <${tv8#16#}>"
 	typeset -i1 tv1 tv2 tv3 tv4 tv5 tv6 tv7 tv8
 	echo "specW <${tv1#1#}> <${tv2#1#}> <${tv3#1#}> <${tv4#1#}> <${tv5#1#}> <${tv6#1#}> <${tv7#1#}> <${tv8#1#}>"
-	typeset -i1 xs1=0xEF7F xs2=0xEF80 xs3=0xFDD0
+	typeset -i1 xs1=0x20007F xs2=0x200080 xs3=0xFDD0
 	echo "specU <${xs1#1#}> <${xs2#1#}> <${xs3#1#}>"
 expected-stdout:
-	in <16#EFEF> <16#20AC>
+	in <16#2000EF> <16#20AC>
 	out <@|~> <â˜º|ï·>
 	pass <16#cafe> <1# > <1#â€¦> <1#f> <ï|â‚¬>
-	specX <7E> <7F> <EF80> <EF81> <EFC0> <EFC1> <A0> <80>
+	specX <7E> <7F> <200080> <200081> <2000C0> <2000C1> <A0> <80>
 	specW <~> <> <€> <> <À> <Á> <Â > <Â€>
-	specU <î½¿> <€> <ï·>
+	specU <ï¿½> <€> <ï·>
 ---
 name: integer-base-one-2a
 description:
@@ -10616,7 +10686,7 @@ stdin:
 	typeset -i16 x=1#ÿ
 	echo /$x/	# invalid utf-8
 expected-stdout:
-	/16#efff/
+	/16#2000ff/
 ---
 name: integer-base-one-2d2
 description:
@@ -10626,7 +10696,7 @@ stdin:
 	typeset -i16 x=1#Â
 	echo /$x/	# invalid 2-byte
 expected-stdout:
-	/16#efc2/
+	/16#2000c2/
 ---
 name: integer-base-one-2d3
 description:
@@ -10636,7 +10706,7 @@ stdin:
 	typeset -i16 x=1#ï
 	echo /$x/	# invalid 2-byte
 expected-stdout:
-	/16#efef/
+	/16#2000ef/
 ---
 name: integer-base-one-2d4
 description:
@@ -10773,11 +10843,14 @@ stdin:
 			lpos=0
 			while (( lpos < ${#line} )); do
 				wc=1#${line:(lpos++):1}
+				let hv=wc
 				if (( (wc < 32) || \
 				    ((wc > 126) && (wc < 160)) )); then
 					dch=.
-				elif (( (wc & 0xFF80) == 0xEF80 )); then
+				elif (( (wc & ~0x7F) == 0x200080 )); then
 					dch=ï¿½
+					# OPTU-8 value mapping, to keep test
+					(( hv = 0xEF80 | (wc & 0x7F) ))
 				else
 					dch=${wc#1#}
 				fi
@@ -10789,7 +10862,6 @@ stdin:
 					print -n "${pos#16#}  "
 					dasc=' |'
 				fi
-				let hv=wc
 				print -n "${hv#16#} "
 				(( (pos++ & 7) == 3 )) && \
 				    print -n -- '- '
@@ -10940,8 +11012,10 @@ stdin:
 				if (( (hv < 32) || \
 				    ((hv > 126) && (hv < 160)) )); then
 					dch=.
-				elif (( (hv & 0xFF80) == 0xEF80 )); then
+				elif (( (hv & ~0x7F) == 0x200080 )); then
 					dch=ï¿½
+					# OPTU-8 value mapping, to keep test
+					(( hv = 0xEF80 | (hv & 0x7F) ))
 				else
 					dch=${line[i-1]#1#}
 				fi
@@ -11554,6 +11628,8 @@ name: fd-cloexec-1
 description:
 	Verify that file descriptors > 2 are private for Korn shells
 	AT&T ksh93 does this still, which means we must keep it as well
+# broken on Xenix and BeOS
+category: !os:beos,!os:sco_xenix
 stdin:
 	cat >cld <<-EOF
 		#!$__perlname
@@ -11571,6 +11647,7 @@ name: fd-cloexec-2
 description:
 	Verify that file descriptors > 2 are not private for POSIX shells
 	See Debian Bug #154540, Closes: #499139
+category: !os:beos,!os:sco_xenix
 stdin:
 	cat >cld <<-EOF
 		#!$__perlname
@@ -11578,11 +11655,16 @@ stdin:
 		syswrite(FH, "Fowl\\n", 5) or die "E: write \$!";
 	EOF
 	chmod +x cld
+	./cld 9>&2
+	echo >&2 =
 	test -n "$POSH_VERSION" || set -o posix
 	exec 9>&1
 	./cld
 expected-stdout:
 	Fowl
+expected-stderr:
+	Fowl
+	=
 ---
 name: fd-cloexec-3
 description:
@@ -13286,6 +13368,9 @@ name: env-intvars
 description:
 	Check that importing integers fails except for numbers
 stdin:
+	print '#!'"$__perlname"'\n($k, $v) = split(/=/, shift(@ARGV),' \
+	    '2);\n$ENV{$k} = $v;\nexec { $ARGV[0] } @ARGV or die $!;' \
+	    >env; chmod +x env; PATH=.$PATHSEP$PATH
 	unset foo bar
 	print 1 $foo , $(typeset -p bar) .
 	print 2 $(foo=123 "$__progname" -c 'integer foo; print -- $foo' 2>&1) , \

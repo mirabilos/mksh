@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.780 2021/07/27 19:17:12 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.806 2021/09/05 17:42:12 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
@@ -45,6 +45,20 @@ if test -d /usr/xpg4/bin/. >/dev/null 2>&1; then
 	PATH=/usr/xpg4/bin:$PATH
 	export PATH
 fi
+
+test_tool() {
+	x=`echo $2 | $3`
+	y=$?
+
+	test x"$y" = x"0" && test x"$x" = x"$4" && return
+	echo >&2 "E: your $1 does not work correctly!"
+	echo >&2 "N: 'echo $2 | $3' exited $y and returned '$x' instead of '$4'"
+	echo >&2 'N: install a better one and prepend e.g. /usr/local/bin to $PATH'
+	exit 1
+}
+test_tool grep foobarbaz 'grep bar' foobarbaz
+test_tool sed abc 'sed y/ac/AC/' AbC
+test_tool tr abc 'tr ac AC' AbC
 
 nl='
 '
@@ -225,6 +239,16 @@ fi
 
 echo "For the build logs, demonstrate that /dev/null and /dev/tty exist:"
 ls -l /dev/null /dev/tty
+cat <<EOF
+Flags on entry (plus HAVE_* which are not shown here):
+ CC        <$CC>
+ CFLAGS    <$CFLAGS>
+ CPPFLAGS  <$CPPFLAGS>
+ LDFLAGS   <$LDFLAGS>
+ LIBS      <$LIBS>
+ TARGET_OS <$TARGET_OS> TARGET_OSREV <$TARGET_OSREV>
+
+EOF
 
 v() {
 	$e "$*"
@@ -595,7 +619,7 @@ do
 		;;
 	:-g)
 		# checker, debug, valgrind build
-		cpp_define DEBUG 1
+		add_cppflags -DDEBUG
 		CFLAGS="$CFLAGS -g3 -fno-builtin"
 		;;
 	:-j)
@@ -701,6 +725,10 @@ if test_z "$TARGET_OS"; then
 		# SVR4 Unix with uname -s = uname -n, whitelist
 		TARGET_OS=$x
 		;;
+	syllable)
+		# other OS with uname -s = uname = uname -n, whitelist
+		TARGET_OS=$x
+		;;
 	*)
 		test x"$x" = x"`uname -n 2>/dev/null`" || TARGET_OS=$x
 		;;
@@ -772,7 +800,7 @@ NEXTSTEP)
 	    grep 'NeXT Mach [0-9][0-9.]*:' | \
 	    sed 's/^.*NeXT Mach \([0-9][0-9.]*\):.*$/\1/'`
 	;;
-QNX|SCO_SV)
+BeOS|QNX|SCO_SV)
 	test_n "$TARGET_OSREV" || TARGET_OSREV=`uname -r`
 	;;
 esac
@@ -798,15 +826,33 @@ AIX)
 	: "${HAVE_SETLOCALE_CTYPE=0}"
 	;;
 BeOS)
-	case $KSH_VERSION in
-	*MIRBSD\ KSH*)
-		oswarn="; it has minor issues"
+TARGET_OSREV
+	: "${CC=gcc}"
+	case $TARGET_OSREV in
+	[012345].*)
+		oswarn="; it has MAJOR issues"
+		test x"$TARGET_OSREV" = x"5.1" || \
+		    cpp_define MKSH_NO_SIGSUSPEND 1
 		;;
 	*)
-		oswarn="; you must recompile mksh with"
-		oswarn="$oswarn${nl}itself in a second stage"
+		oswarn="; it has minor issues"
 		;;
 	esac
+	case $KSH_VERSION in
+	*MIRBSD\ KSH*)
+		;;
+	*)
+		case $ZSH_VERSION in
+		*[0-9]*)
+			;;
+		*)
+			oswarn="; you must recompile mksh with"
+			oswarn="$oswarn${nl}itself in a second stage"
+			;;
+		esac
+		;;
+	esac
+	: "${MKSH_UNLIMITED=1}"
 	# BeOS has no real tty either
 	cpp_define MKSH_UNEMPLOYED 1
 	cpp_define MKSH_DISABLE_TTY_WARNING 1
@@ -860,6 +906,7 @@ Haiku)
 	cpp_define MKSH_ASSUME_UTF8 1
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	;;
 Harvey)
 	add_cppflags -D_POSIX_SOURCE
@@ -870,6 +917,7 @@ Harvey)
 	cpp_define MKSH_ASSUME_UTF8 1
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	cpp_define MKSH__NO_SYMLINK 1
 	check_categories="$check_categories nosymlink"
 	cpp_define MKSH_NO_CMDLINE_EDITING 1
@@ -901,6 +949,7 @@ Jehanne)
 	cpp_define MKSH_ASSUME_UTF8 1
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	cpp_define MKSH__NO_SYMLINK 1
 	check_categories="$check_categories nosymlink"
 	cpp_define MKSH_NO_CMDLINE_EDITING 1
@@ -943,7 +992,12 @@ Minix3)
 	oldish_ed=no-stderr-ed		# /usr/bin/ed(!) is broken
 	: "${HAVE_SETLOCALE_CTYPE=0}${MKSH_UNLIMITED=1}" #XXX recheck ulimit
 	;;
+Minoca)
+	: "${CC=gcc}"
+	;;
 MirBSD)
+	# for testing HAVE_SIGACTION=0 builds only (but fulfills the contract)
+	cpp_define MKSH_USABLE_SIGNALFUNC bsd_signal
 	;;
 MSYS_*)
 	cpp_define MKSH_ASSUME_UTF8 0
@@ -960,7 +1014,7 @@ NEXTSTEP)
 	add_cppflags -D_NEXT_SOURCE
 	add_cppflags -D_POSIX_SOURCE
 	: "${AWK=gawk}"
-	: "${CC=cc -posix}"
+	: "${CC=cc -posix -traditional-cpp}"
 	cpp_define MKSH_NO_SIGSETJMP 1
 	# NeXTstep cannot get a controlling tty
 	cpp_define MKSH_UNEMPLOYED 1
@@ -985,6 +1039,7 @@ OS/2)
 	cpp_define MKSH_ASSUME_UTF8 0
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	HAVE_TERMIOS_H=0
 	HAVE_MKNOD=0	# setmode() incompatible
 	check_categories="$check_categories nosymlink"
@@ -1021,6 +1076,7 @@ OS/390)
 	cpp_define MKSH_ASSUME_UTF8 0
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=1
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	: "${CC=xlc}"
 	: "${SIZE=: size}"
 	cpp_define MKSH_FOR_Z_OS 1
@@ -1043,6 +1099,7 @@ Plan9)
 	cpp_define MKSH_ASSUME_UTF8 1
 	HAVE_ISSET_MKSH_ASSUME_UTF8=1
 	HAVE_ISOFF_MKSH_ASSUME_UTF8=0
+	: "${HAVE_SETLOCALE_CTYPE=0}"
 	cpp_define MKSH__NO_SYMLINK 1
 	check_categories="$check_categories nosymlink"
 	cpp_define MKSH_NO_CMDLINE_EDITING 1
@@ -1070,13 +1127,12 @@ QNX)
 	;;
 scosysv)
 	cmplrflgs=-DMKSH_MAYBE_QUICK_C
-	add_cppflags -D_IBCS2
 	cpp_define MKSH__NO_SETEUGID 1
 	: "${HAVE_SETRESUGID=0}"
 	cpp_define MKSH_BROKEN_OFFSETOF 1
 	cpp_define MKSH_TYPEDEF_SSIZE_T int
 	cpp_define MKSH_UNEMPLOYED 1
-	: "${HAVE_SETLOCALE_CTYPE=0}"
+	: "${HAVE_SETLOCALE_CTYPE=0}${HAVE_TERMIOS_H=0}"
 	;;
 SCO_SV)
 	case $TARGET_OSREV in
@@ -1094,6 +1150,18 @@ SCO_SV)
 	esac
 	: "${HAVE_SYS_SIGLIST=0}${HAVE__SYS_SIGLIST=0}"
 	;;
+SerenityOS)
+	oswarn="; it has major issues"
+	cpp_define MKSH_NO_SIGSUSPEND 1
+	cpp_define MKSH_POLL_FOR_PAUSE 1
+	: "${MKSH_UNLIMITED=1}${HAVE_GETRUSAGE=0}"
+	cpp_define MKSH_UNEMPLOYED 1
+	cpp_define MKSH_DISABLE_TTY_WARNING 1
+	cpp_define MKSH_NO_SIGSETJMP 1
+	cpp_define _setjmp setjmp
+	cpp_define _longjmp longjmp
+	cpp_define MKSH_USABLE_SIGNALFUNC signal
+	;;
 skyos)
 	oswarn="; it has minor issues"
 	;;
@@ -1104,7 +1172,7 @@ SunOS)
 syllable)
 	add_cppflags -D_GNU_SOURCE
 	cpp_define MKSH_NO_SIGSUSPEND 1
-	oswarn=' and will currently not work'
+	: "${MKSH_UNLIMITED=1}"
 	;;
 ULTRIX)
 	: "${CC=cc -YPOSIX}"
@@ -1122,6 +1190,28 @@ UWIN*)
 	oswarn="; it will compile, but the target"
 	oswarn="$oswarn${nl}platform itself is very flakey/unreliable"
 	: "${HAVE_SETLOCALE_CTYPE=0}"
+	;;
+XENIX)
+	# mostly when crosscompiling from scosysv
+	cmplrflgs=-DMKSH_MAYBE_QUICK_C
+	# this can barely do anything
+	cpp_define MKSH__NO_SETEUGID 1
+	: "${HAVE_SETRESUGID=0}"
+	cpp_define MKSH_NO_SIGSETJMP 1
+	cpp_define _setjmp setjmp
+	cpp_define _longjmp longjmp
+	cpp_define USE_REALLOC_MALLOC 0
+	cpp_define MKSH_BROKEN_OFFSETOF 1
+	cpp_define MKSH_TYPEDEF_SSIZE_T int
+	# per http://www.polarhome.com/service/man/?qf=signal&of=Xenix
+	cpp_define MKSH_USABLE_SIGNALFUNC signal
+	cpp_define MKSH_UNEMPLOYED 1
+	cpp_define MKSH_NOPROSPECTOFWORK 1
+	cpp_define MKSH__NO_SYMLINK 1
+	check_categories="$check_categories nosymlink"
+	: "${HAVE_SETLOCALE_CTYPE=0}"
+	# these are broken
+	HAVE_TERMIOS_H=0
 	;;
 _svr4)
 	# generic target for SVR4 Unix with uname -s = uname -n
@@ -1165,7 +1255,7 @@ OSF1)
 	vv '|' "uname -a >&2"
 	vv '|' "/usr/sbin/sizer -v >&2"
 	;;
-scosysv|SCO_SV|UnixWare|UNIX_SV)
+scosysv|SCO_SV|UnixWare|UNIX_SV|XENIX)
 	vv '|' "uname -a >&2"
 	vv '|' "uname -X >&2"
 	;;
@@ -1289,6 +1379,7 @@ case $ct in
 ack)
 	# work around "the famous ACK const bug"
 	CPPFLAGS="-Dconst= $CPPFLAGS"
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 adsp)
 	echo >&2 'Warning: Analog Devices C++ compiler for Blackfin, TigerSHARC
@@ -1317,6 +1408,7 @@ clang)
 dec)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS -V"
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -Wl,-V conftest.c $LIBS"
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 dmc)
 	echo >&2 "Warning: Digital Mars Compiler detected. When running under"
@@ -1344,6 +1436,7 @@ icc)
 	;;
 kencc)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -v conftest.c $LIBS"
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 lacc)
 	# no version information
@@ -1351,6 +1444,7 @@ lacc)
 lcc)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -v conftest.c $LIBS"
 	cpp_define __inline__ __inline
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 metrowerks)
 	echo >&2 'Warning: Metrowerks C compiler detected. This has not yet
@@ -1398,6 +1492,7 @@ pgi)
 	;;
 quickc)
 	# no version information
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 sdcc)
 	echo >&2 'Warning: sdcc (http://sdcc.sourceforge.net), the small devices
@@ -1418,6 +1513,7 @@ tendra)
 ucode)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN $LIBS -V"
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -Wl,-V conftest.c $LIBS"
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 uslc)
 	case $TARGET_OS:$TARGET_OSREV in
@@ -1428,6 +1524,7 @@ uslc)
 		;;
 	esac
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -V conftest.c $LIBS"
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 watcom)
 	vv '|' "$CC $CFLAGS $CPPFLAGS $LDFLAGS $NOWARN -v conftest.c $LIBS"
@@ -1787,7 +1884,7 @@ test $ct = pcc && phase=u
 #
 # Compiler: check for stuff that only generates warnings
 #
-ac_test attribute_bounded '' 'for __attribute__((__bounded__))' <<-'EOF'
+ac_test attribute_bounded attribute_extension 0 'for __attribute__((__bounded__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1808,7 +1905,7 @@ ac_test attribute_bounded '' 'for __attribute__((__bounded__))' <<-'EOF'
 	}
 	#endif
 EOF
-ac_test attribute_format '' 'for __attribute__((__format__))' <<-'EOF'
+ac_test attribute_format attribute_extension 0 'for __attribute__((__format__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1823,7 +1920,7 @@ ac_test attribute_format '' 'for __attribute__((__format__))' <<-'EOF'
 	int main(int ac, char *av[]) { return (fprintf(stderr, "%s%d", *av, ac)); }
 	#endif
 EOF
-ac_test attribute_noreturn '' 'for __attribute__((__noreturn__))' <<-'EOF'
+ac_test attribute_noreturn attribute_extension 0 'for __attribute__((__noreturn__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1836,7 +1933,7 @@ ac_test attribute_noreturn '' 'for __attribute__((__noreturn__))' <<-'EOF'
 	void fnord(void) { exit(0); }
 	#endif
 EOF
-ac_test attribute_pure '' 'for __attribute__((__pure__))' <<-'EOF'
+ac_test attribute_pure attribute_extension 0 'for __attribute__((__pure__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1849,7 +1946,7 @@ ac_test attribute_pure '' 'for __attribute__((__pure__))' <<-'EOF'
 	int foo(const char *s) { return ((int)s[0]); }
 	#endif
 EOF
-ac_test attribute_unused '' 'for __attribute__((__unused__))' <<-'EOF'
+ac_test attribute_unused attribute_extension 0 'for __attribute__((__unused__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1861,7 +1958,7 @@ ac_test attribute_unused '' 'for __attribute__((__unused__))' <<-'EOF'
 	    __attribute__((__unused__))) { return (isatty(0)); }
 	#endif
 EOF
-ac_test attribute_used '' 'for __attribute__((__used__))' <<-'EOF'
+ac_test attribute_used attribute_extension 0 'for __attribute__((__used__))' <<-'EOF'
 	#if defined(__TenDRA__) || (defined(__GNUC__) && (__GNUC__ < 2))
 	extern int thiswillneverbedefinedIhope(void);
 	/* force a failure: TenDRA and gcc 1.42 have false positive here */
@@ -1938,6 +2035,7 @@ ac_header sys/file.h sys/types.h
 ac_header sys/mkdev.h sys/types.h
 ac_header sys/mman.h sys/types.h
 ac_header sys/param.h
+ac_header sys/ptem.h sys/types.h sys/stream.h
 ac_header sys/resource.h sys/types.h _time
 ac_header sys/sysmacros.h
 ac_header bstring.h
@@ -1988,16 +2086,6 @@ ac_test can_ucbints '!' can_inttypes 1 "for UCB 32-bit integer types" <<-'EOF'
 	#include <sys/types.h>
 	#include <stddef.h>
 	int main(int ac, char *av[]) { return ((u_int32_t)(size_t)*av + (int32_t)ac); }
-EOF
-ac_test can_int8type '!' stdint_h 1 "for standard 8-bit integer type" <<-'EOF'
-	#include <sys/types.h>
-	#include <stddef.h>
-	int main(int ac, char *av[]) { return ((uint8_t)(size_t)av[ac]); }
-EOF
-ac_test can_ucbint8 '!' can_int8type 1 "for UCB 8-bit integer type" <<-'EOF'
-	#include <sys/types.h>
-	#include <stddef.h>
-	int main(int ac, char *av[]) { return ((u_int8_t)(size_t)av[ac]); }
 EOF
 
 # only testn: added later below
@@ -2258,6 +2346,13 @@ ac_test nice <<-'EOF'
 	int main(void) { return (nice(4)); }
 EOF
 
+ac_test rename <<-'EOF'
+	#include <fcntl.h>
+	#include <stdio.h>
+	#include <unistd.h>
+	int main(int ac, char *av[]) { return (rename(*av, av[ac - 1])); }
+EOF
+
 ac_test revoke <<-'EOF'
 	#include <sys/types.h>
 	#if HAVE_LIBUTIL_H
@@ -2327,6 +2422,23 @@ ac_test setgroups setresugid 0 <<-'EOF'
 	int main(void) { gid_t gid = 0; return (setgroups(0, &gid)); }
 EOF
 
+ac_test sigaction <<-'EOF'
+	#define MKSH_INCLUDES_ONLY
+	#include "sh.h"
+	int main(int ac, char *av[]) {
+		struct sigaction sa, osa;
+		ssize_t n;
+
+		memset(&sa, 0, sizeof(sa));
+		sigemptyset(&sa.sa_mask);
+		sa.sa_handler = SIG_IGN;
+		sigaction(ac, &sa, &osa);
+		n = write(1, *av, strlen(*av));
+		sigaction(ac, &osa, NULL);
+		return ((size_t)n != strlen(*av));
+	}
+EOF
+
 if test x"$et" = x"klibc"; then
 
 	ac_testn __rt_sigsuspend '' 'whether klibc uses RT signals' <<-'EOF'
@@ -2374,6 +2486,11 @@ ac_test strlcpy <<-'EOF'
 	#include <string.h>
 	int main(int ac, char *av[]) { return (strlcpy(*av, av[1],
 	    (size_t)ac)); }
+EOF
+
+ac_test strstr <<-'EOF'
+	#include <string.h>
+	int main(int ac, char *av[]) { return (!strstr(av[ac - 1], "meow")); }
 EOF
 
 #

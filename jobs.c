@@ -22,8 +22,11 @@
  */
 
 #include "sh.h"
+#ifdef MKSH_POLL_FOR_PAUSE
+#include <poll.h>
+#endif
 
-__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.136 2021/07/27 00:16:44 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.142 2021/08/07 03:54:29 tg Exp $");
 
 #if HAVE_KILLPG
 #define mksh_killpg		killpg
@@ -248,7 +251,7 @@ proc_errorlevel(Proc *p)
 void
 j_suspend(void)
 {
-	struct sigaction sa, osa;
+	ksh_sigsaved ohandler;
 
 	/* Restore tty and pgrp. */
 	if (ttypgrp_ok) {
@@ -266,14 +269,11 @@ j_suspend(void)
 	}
 
 	/* Suspend the shell. */
-	memset(&sa, 0, sizeof(sa));
-	sigemptyset(&sa.sa_mask);
-	sa.sa_handler = SIG_DFL;
-	sigaction(SIGTSTP, &sa, &osa);
+	ksh_sigset(SIGTSTP, SIG_DFL, &ohandler);
 	kill(0, SIGTSTP);
 
 	/* Back from suspend, reset signals, pgrp and tty. */
-	sigaction(SIGTSTP, &osa, NULL);
+	ksh_sigrestore(SIGTSTP, &ohandler);
 	if (ttypgrp_ok) {
 		if (restore_ttypgrp >= 0) {
 			if (setpgid(0, kshpid) < 0) {
@@ -1138,7 +1138,7 @@ j_waitj(Job *j,
 {
 	Proc *p;
 	int rv;
-#ifdef MKSH_NO_SIGSUSPEND
+#if !defined(MKSH_NOPROSPECTOFWORK) && defined(MKSH_NO_SIGSUSPEND)
 	sigset_t omask;
 #endif
 
@@ -1159,7 +1159,11 @@ j_waitj(Job *j,
 #ifndef MKSH_NOPROSPECTOFWORK
 #ifdef MKSH_NO_SIGSUSPEND
 		sigprocmask(SIG_SETMASK, &sm_default, &omask);
+#ifdef MKSH_POLL_FOR_PAUSE
+		poll(NULL, 0, -1);
+#else
 		pause();
+#endif
 		/* note that handlers may run here so they need to know */
 		sigprocmask(SIG_SETMASK, &omask, NULL);
 #else
@@ -1339,7 +1343,7 @@ j_sigchld(int sig MKSH_A_UNUSED)
 	pid_t pid;
 	int status;
 	struct rusage ru0, ru1;
-#ifdef MKSH_NO_SIGSUSPEND
+#if !defined(MKSH_NOPROSPECTOFWORK) && defined(MKSH_NO_SIGSUSPEND)
 	sigset_t omask;
 
 	/* this handler can run while SIGCHLD is not blocked, so block it now */
@@ -1360,7 +1364,8 @@ j_sigchld(int sig MKSH_A_UNUSED)
 		}
 #endif
 
-	getrusage(RUSAGE_CHILDREN, &ru0);
+	if (ksh_getrusage(RUSAGE_CHILDREN, &ru0))
+		warningf(true, "getrusage1: %s", cstrerror(errno));
 	do {
 #ifndef MKSH_NOPROSPECTOFWORK
 		pid = waitpid(-1, &status, (WNOHANG |
@@ -1379,7 +1384,8 @@ j_sigchld(int sig MKSH_A_UNUSED)
 		if (pid <= 0)
 			goto j_sigchld_out;
 
-		getrusage(RUSAGE_CHILDREN, &ru1);
+		if (ksh_getrusage(RUSAGE_CHILDREN, &ru1))
+			warningf(true, "getrusage2: %s", cstrerror(errno));
 
 		/* find job and process structures for this pid */
 		for (j = job_list; j != NULL; j = j->next)
@@ -1429,7 +1435,7 @@ j_sigchld(int sig MKSH_A_UNUSED)
 #endif
 
  j_sigchld_out:
-#ifdef MKSH_NO_SIGSUSPEND
+#if !defined(MKSH_NOPROSPECTOFWORK) && defined(MKSH_NO_SIGSUSPEND)
 	sigprocmask(SIG_SETMASK, &omask, NULL);
 #endif
 	errno = saved_errno;
@@ -1742,7 +1748,7 @@ j_lookup(const char *cp, int *ecodep)
 		last_match = NULL;
 		for (j = job_list; j != NULL; j = j->next)
 			for (p = j->proc_list; p != NULL; p = p->next)
-				if (strstr(p->command, cp + 1) != NULL) {
+				if (vstrstr(p->command, cp + 1)) {
 					if (last_match) {
 						if (ecodep)
 							*ecodep = JL_AMBIG;
