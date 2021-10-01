@@ -3,7 +3,7 @@
     "coverity_scan": {
       "branch_pattern": "coverity_scan",
       "build_command": "make -f GNUmakefile -j4 all",
-      "build_command_prepend": "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && sh Build.sh -M",
+      "build_command_prepend": "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && sh Build.sh -M -g",
       "notification_email": "tg@mirbsd.de",
       "project": {
         "description": "mksh Coverity/Travis",
