@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.386 2021/10/01 23:25:28 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.389 2021/10/02 00:49:26 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -255,10 +255,12 @@ x_do_comment(char *buf, ssize_t bsize, ssize_t *lenp)
 static void
 x_print_expansions(int nwords, char * const *words, bool is_command)
 {
-	bool use_copy = false;
-	size_t prefix_len;
-	XPtrV l = { NULL, 0, 0 };
+	int i;
+	char **w;
+	size_t prefix_len = 0;
+	bool prefix_trim = false;
 	struct columnise_opts co;
+	struct shf S;
 
 	/*
 	 * Check if all matches are in the same directory (in this
@@ -266,8 +268,6 @@ x_print_expansions(int nwords, char * const *words, bool is_command)
 	 */
 	if (!is_command &&
 	    (prefix_len = x_longest_prefix(nwords, words)) > 0) {
-		int i;
-
 		/* Special case for 1 match (prefix is whole word) */
 		if (nwords == 1)
 			prefix_len = x_basename(words[0], NULL);
@@ -281,13 +281,22 @@ x_print_expansions(int nwords, char * const *words, bool is_command)
 			while (prefix_len > 0 &&
 			    !mksh_cdirsep(words[0][prefix_len - 1]))
 				prefix_len--;
-			use_copy = true;
-			XPinit(l, nwords + 1);
-			for (i = 0; i < nwords; i++)
-				XPput(l, words[i] + prefix_len);
-			XPput(l, NULL);
+			prefix_trim = true;
 		}
 	}
+	/*
+	 * Escape words, trimming prefix_len if needed
+	 */
+	if (!prefix_trim)
+		prefix_len = 0;
+	w = alloc2((kui)nwords + 1U, sizeof(char *), ATEMP);
+	for (i = 0; i < nwords; ++i) {
+		shf_sopen(NULL, 0, SHF_WR | SHF_DYNAMIC, &S);
+		uprntmbs(words[i] + prefix_len, false, &S);
+		w[i] = shf_sclose(&S);
+	}
+	w[nwords] = NULL;
+
 	/*
 	 * Enumerate expansions
 	 */
@@ -297,11 +306,8 @@ x_print_expansions(int nwords, char * const *words, bool is_command)
 	co.linesep = '\n';
 	co.do_last = true;
 	co.prefcol = false;
-	pr_list(&co, use_copy ? (char **)XPptrv(l) : words);
-
-	if (use_copy)
-		/* not x_free_words() */
-		XPfree(l);
+	pr_list(&co, w);
+	x_free_words(nwords, w);
 }
 
 /*
@@ -438,10 +444,12 @@ x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 	}
 	expand(yylval.cp, &w, nwords);
 	XPput(w, NULL);
-	words = (char **)XPclose(w);
+	nwords = 0;
+	while (XPptrv(w)[nwords])
+		++nwords;
+	/* XPclose(w) except for nwords plus a trailing NULL for pr_list */
+	words = aresize2(XPptrv(w), (kui)nwords + 1U, sizeof(void *), ATEMP);
 
-	for (nwords = 0; words[nwords]; nwords++)
-		;
 	if (nwords == 1) {
 		struct stat statb;
 
@@ -1056,7 +1064,7 @@ static int x_col;		/* current column on line */
 #define X_KTAB(pfx,key)		x_ktab[X_xTABidx((pfx), (key))]
 #define X_MTAB(pfx,key)		x_mtab[X_xTABidx((pfx), (key))]
 
-static int x_ins(const char *);
+static int x_ins(const void *);
 static void x_delete(size_t, bool);
 static void x_bword(uint32_t, bool);
 static void x_fword(uint32_t, bool);
@@ -1476,7 +1484,7 @@ x_do_ins(const char *cp, size_t len)
 }
 
 static int
-x_ins(const char *s)
+x_ins(const void *s)
 {
 	char *cp = xcp;
 	kby adj = x_adj_done;
