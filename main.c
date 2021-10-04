@@ -35,7 +35,7 @@
 #include <locale.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.391 2021/10/01 23:25:32 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.393 2021/10/03 22:38:49 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -482,6 +482,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	Flag(FMONITOR) = 127;
 #endif
 	/* this to note if utf-8 mode is set on command line (see below) */
+/*XXX this and the below can probably go away */
+/*XXX UTFMODE should be set from env here if locale tracking, just keep it */
 	UTFMODE = 2;
 
 	if (!as_builtin) {
@@ -490,6 +492,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 			return (1);
 	}
 
+/*XXX drop this and the entire cases below */
 	/* process this later only, default to off (hysterical raisins) */
 	utf_flag = UTFMODE;
 	UTFMODE = 0;
@@ -611,12 +614,18 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		getopts_reset(1);
 	}
 
+/*XXX to go away entirely with locale tracking */
 	/* divine the initial state of the utf8-mode Flag */
 	ccp = null;
 	switch (utf_flag) {
 
+#ifdef MKSH_EARLY_LOCALE_TRACKING
+	/* not set on command line, not FTALKING */
+	case 2:
+#endif
 	/* auto-detect from locale or environment */
 	case 4:
+#ifndef MKSH_EARLY_LOCALE_TRACKING
 #if HAVE_SETLOCALE_CTYPE
 		ccp = setlocale(LC_CTYPE, "");
 #if HAVE_LANGINFO_CODESET
@@ -626,10 +635,12 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		if (!isuc(ccp))
 			ccp = null;
 #endif
+#endif
 		/* FALLTHROUGH */
 
 	/* auto-detect from environment */
 	case 3:
+#ifndef MKSH_EARLY_LOCALE_TRACKING
 		/* these were imported from environ earlier */
 		if (ccp == null)
 			ccp = str_val(global("LC_ALL"));
@@ -638,10 +649,15 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		if (ccp == null)
 			ccp = str_val(global("LANG"));
 		UTFMODE = isuc(ccp);
+#else
+		recheck_ctype(); /*XXX probably unnecessary here */
+#endif
 		break;
 
+#ifndef MKSH_EARLY_LOCALE_TRACKING
 	/* not set on command line, not FTALKING */
 	case 2:
+#endif
 	/* unknown values */
 	default:
 		utf_flag = 0;
@@ -2132,7 +2148,7 @@ init_environ(void)
 	while (*wp != NULL) {
 		rndpush(*wp);
 		typeset(*wp, IMPORT | EXPORT, 0, 0, 0);
-#ifdef notyet
+#ifdef MKSH_EARLY_LOCALE_TRACKING
 		if (ord((*wp)[0]) == ORD('L') && (
 		    (ord((*wp)[1]) == ORD('C') && ord((*wp)[2]) == ORD('_')) ||
 		    !strcmp(*wp, "LANG"))) {
@@ -2158,8 +2174,8 @@ void
 recheck_ctype(void)
 {
 	const char *ccp;
-	kby old_utfmode = UTFMODE;
 
+	/*XXX OSX has LC_CTYPE=UTF-8 */
 	ccp = str_val(global("LC_ALL"));
 	if (ccp == null)
 		ccp = str_val(global("LC_CTYPE"));
@@ -2167,7 +2183,7 @@ recheck_ctype(void)
 		ccp = str_val(global("LANG"));
 	UTFMODE = isuc(ccp);
 #if HAVE_SETLOCALE_CTYPE
-	ccp = setlocale(LC_CTYPE, *ccp ? ccp : "C");
+	ccp = setlocale(LC_CTYPE, ccp);
 #if HAVE_LANGINFO_CODESET
 	if (!isuc(ccp))
 		ccp = nl_langinfo(CODESET);
@@ -2175,9 +2191,6 @@ recheck_ctype(void)
 	if (isuc(ccp))
 		UTFMODE = 1;
 #endif
-
-	if (Flag(FPOSIX) && UTFMODE && !old_utfmode)
-		warningf(true, "early locale tracking enabled UTF-8 mode while in POSIX mode, you are now noncompliant");
 }
 #endif
 
