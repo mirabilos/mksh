@@ -26,7 +26,7 @@
 #include <poll.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.143 2021/10/01 23:25:31 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.145 2021/10/10 20:41:17 tg Exp $");
 
 #if HAVE_KILLPG
 #define mksh_killpg		killpg
@@ -953,7 +953,6 @@ j_stopped_running(void)
 	return (0);
 }
 
-
 /* list jobs for jobs built-in */
 int
 j_jobs(const char *cp, int slp,
@@ -1510,16 +1509,17 @@ check_job(Job *j)
 			put_job(j, PJ_ON_FRONT);
 		if (Flag(FNOTIFY) &&
 		    (j->flags & (JF_WAITING|JF_W_ASYNCNOTIFY)) != JF_WAITING) {
-			/* Look for the real file descriptor 2 */
-			{
-				struct env *ep;
-				int fd = 2;
+			struct env *ep = e;
+			int fd = 2, nfd;
 
-				for (ep = e; ep; ep = ep->oenv)
-					if (ep->savefd && ep->savefd[2])
-						fd = ep->savefd[2];
-				shf_reopen(fd, SHF_WR, shl_j);
+			/* look for the real file descriptor 2 */
+			while (ep) {
+				if (ep->savedfd && (nfd = SAVEDFD(ep, 2)))
+					fd = nfd;
+				ep = ep->oenv;
 			}
+			shf_reopen(fd, SHF_WR, shl_j);
+
 			/*
 			 * Can't call j_notify() as it removes jobs. The job
 			 * must stay in the job list as j_waitj() may be

@@ -205,9 +205,9 @@
 #endif
 
 #ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.946 2021/10/03 23:45:54 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.953 2021/10/10 21:41:09 tg Exp $");
 #endif
-#define MKSH_VERSION "R59 2021/10/03"
+#define MKSH_VERSION "R59 2021/10/10"
 
 /* arithmetic types: C implementation */
 #if !HAVE_CAN_INTTYPES
@@ -290,7 +290,6 @@ typedef MKSH_TYPEDEF_SSIZE_T ssize_t;
 #undef BAD		/* AIX defines that somewhere */
 #undef PRINT		/* LynxOS defines that somewhere */
 #undef flock		/* SCO UnixWare defines that to flock64 but ENOENT */
-
 
 #ifndef MKSH_INCLUDES_ONLY
 
@@ -382,6 +381,7 @@ extern int ksh_getrusage(int, struct rusage *);
 #endif
 #endif
 #endif
+
 #ifndef SIZE_MAX
 #ifdef SIZE_T_MAX
 #define SIZE_MAX	SIZE_T_MAX
@@ -389,6 +389,21 @@ extern int ksh_getrusage(int, struct rusage *);
 #define SIZE_MAX	((size_t)-1)
 #endif
 #endif
+
+#ifndef _POSIX_VDISABLE
+/* we could do fpathconf(tty_fd, _PC_VDISABLE) but… only if needed */
+/* default to old BSD value */
+#define KSH_VDISABLE	0xFFU
+#define KSH_ISVDIS(x,d)	(KBI(x) == KSH_VDISABLE ? (d) : KBI(x))
+#define KSH_DOVDIS(x)	(x) = KSH_VDISABLE;
+#elif _POSIX_VDISABLE == -1
+#define KSH_ISVDIS(x,d)	KBI(x)
+#define KSH_DOVDIS(x)	/* nothing */
+#else
+#define KSH_ISVDIS(x,d)	((x) == _POSIX_VDISABLE ? (d) : KBI(x))
+#define KSH_DOVDIS(x)	(x) = _POSIX_VDISABLE
+#endif
+
 #ifndef S_ISCHR
 #define S_ISCHR(m)	((m & 0170000) == 0020000)
 #endif
@@ -404,7 +419,6 @@ extern int ksh_getrusage(int, struct rusage *);
 #ifndef DEFFILEMODE
 #define DEFFILEMODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
 #endif
-
 
 /* determine ksh_NSIG: first, use the traditional definitions */
 #undef ksh_NSIG
@@ -464,7 +478,6 @@ typedef sig_t ksh_sigsaved;
 
 /* contract: masks the signal, may restart, not oneshot */
 void ksh_sigset(int, sig_t, ksh_sigsaved *);
-
 
 /* OS-dependent additions (functions, variables, by OS) */
 
@@ -588,7 +601,6 @@ extern int __cdecl setegid(gid_t);
 #define KSH_VTAB	11
 #endif
 
-
 /* some useful #defines */
 #ifdef EXTERN
 # define E_INIT(i) = i
@@ -688,7 +700,7 @@ const char *cstrstr(const char *, const char *);
 #endif
 
 #if (!defined(MKSH_BUILDMAKEFILE4BSD) && !defined(MKSH_BUILDSH)) || (MKSH_BUILD_R != 599)
-#error Must run Build.sh to compile this.
+#error Use the documented way to build this.
 extern void thiswillneverbedefinedIhope(void);
 int
 im_sorry_dave(void)
@@ -793,13 +805,37 @@ im_sorry_dave(void)
 #define MKSH_UNEMPLOYED		1
 #endif
 
-#define NUFILE		32	/* Number of user-accessible files */
-#define FDBASE		10	/* First file usable by Shell */
+/* savedfd data type */
+typedef kby ksh_fdsave;
+/* savedfd “index is closed” mask */
+#define FDICLMASK	((ksh_fdsave)0x80U)
+/* savedfd “fd number” mask */
+#define FDNUMMASK	((ksh_fdsave)0x7FU)
+/* savedfd fd numbers are ≥ FDBASE */
+/* savedfd “not saved” number: 0 */
+/* savedfd “saved is closed” or savefd error indicator number */
+#define FDCLOSED	((ksh_fdsave)0x01U)
+/* savefd() to savedfd mapper */
+#define FDSAVE(i,sfd)	do {					\
+	int FDSAVEsavedfd = (sfd);				\
+	e->savedfd[i] = FDSAVEsavedfd < FDBASE ? FDCLOSED :	\
+	    /* ≤ FDMAXNUM checked in savefd() already */	\
+	    (ksh_fdsave)(FDSAVEsavedfd & FDNUMMASK);		\
+} while (/* CONSTCOND */ 0)
+/* savedfd to restfd mapper */
+#define FDSVNUM(ep,i)	((kui)((ep)->savedfd[i] & FDNUMMASK))
+#define SAVEDFD(ep,i)	(FDSVNUM(ep, i) == (kui)FDCLOSED ? \
+			    -1 : (int)FDSVNUM(ep, i))
+/* first fd number usable by the shell for its own purposes */
+#define FDBASE		10
+/* … and last one */
+#define FDMAXNUM	127 /* 0x7FU, cf. FDNUMMASK */
+/* number of user-accessible file descriptors */
+#define NUFILE		10
 
 /*
  * simple grouping allocator
  */
-
 
 /* 0. OS API: where to get memory from and how to free it (grouped) */
 
@@ -822,7 +858,6 @@ im_sorry_dave(void)
 /* GNU libc: get_current_dir_name(3) -> free(3) */
 #define free_gnu_gcdn(p)	free(p)
 #endif
-
 
 /* 1. internal structure */
 struct lalloc_common {
@@ -848,7 +883,6 @@ struct lalloc_item {
 
 /* 3. group structure */
 typedef struct lalloc_common Area;
-
 
 EXTERN Area aperm;		/* permanent object space */
 #define APERM	&aperm
@@ -894,7 +928,7 @@ extern struct env {
 	Area area;		/* temporary allocation area */
 	struct env *oenv;	/* link to previous environment */
 	struct block *loc;	/* local variables and functions */
-	short *savefd;		/* original redirected fds */
+	ksh_fdsave *savedfd;	/* original fds for redirected fds */
 	struct temp *temps;	/* temp files */
 	/* saved parser recursion state */
 	struct yyrecursive_state *yyrecursive_statep;
@@ -971,7 +1005,6 @@ EXTERN struct {
 #define kshgid		rndsetupstate.kshgid_v
 #define kshegid		rndsetupstate.kshegid_v
 #define kshppid		rndsetupstate.kshppid_v
-
 
 /* option processing */
 #define OF_CMDLINE	0x01	/* command line */
@@ -1095,7 +1128,7 @@ EXTERN const char T_set_po[] E_INIT(" set +o");
 EXTERN const char Tsghset[] E_INIT("*=#set");
 #define Tsh (Tmksh + 2)
 #define TSHELL (TEXECSHELL + 4)
-#define Tshell (Ttoo_many_files + 23)
+EXTERN const char Tshell[] E_INIT("shell");
 EXTERN const char Tshf_read[] E_INIT("shf_read");
 EXTERN const char Tshf_write[] E_INIT("shf_write");
 EXTERN const char Tgsource[] E_INIT("=source");
@@ -1105,7 +1138,7 @@ EXTERN const char Tj_suspend[] E_INIT("j_suspend");
 EXTERN const char Tsynerr[] E_INIT("syntax error");
 EXTERN const char Ttime[] E_INIT("time");
 EXTERN const char Ttoo_many_args[] E_INIT("too many arguments");
-EXTERN const char Ttoo_many_files[] E_INIT("too many open files in shell");
+EXTERN const char Ttoo_many_files[] E_INIT("too many open files (%d -> %d): %s");
 EXTERN const char Ttrue[] E_INIT("true");
 EXTERN const char Tdgtypeset[] E_INIT("^=typeset");
 #define Ttypeset (Tdgtypeset + 2)
@@ -1265,7 +1298,7 @@ EXTERN const char T_devtty[] E_INIT("/dev/tty");
 #define Tsynerr "syntax error"
 #define Ttime "time"
 #define Ttoo_many_args "too many arguments"
-#define Ttoo_many_files "too many open files in shell"
+#define Ttoo_many_files "too many open files (%d -> %d): %s"
 #define Ttrue "true"
 #define Tdgtypeset "^=typeset"
 #define Ttypeset "typeset"
@@ -1691,7 +1724,6 @@ EXTERN char	*current_wd;
 EXTERN mksh_ari_t x_cols E_INIT(80);
 EXTERN mksh_ari_t x_lins E_INIT(24);
 
-
 /* Determine the location of the system (common) profile */
 
 #ifndef MKSH_DEFAULT_PROFILEDIR
@@ -1700,7 +1732,6 @@ EXTERN mksh_ari_t x_lins E_INIT(24);
 
 #define MKSH_SYSTEM_PROFILE	MKSH_DEFAULT_PROFILEDIR "/profile"
 #define MKSH_SUID_PROFILE	MKSH_DEFAULT_PROFILEDIR "/suid_profile"
-
 
 /* Used by v_evaluate() and setstr() to control action when error occurs */
 #define KSH_UNWIND_ERROR	0	/* unwind the stack (kshlongjmp) */
@@ -1760,7 +1791,6 @@ EXTERN mksh_ari_t x_lins E_INIT(24);
 #define SHF_EOF		0x1000		/* read eof (sticky) */
 #define SHF_READING	0x2000		/* currently reading: rnleft,rp valid */
 #define SHF_WRITING	0x4000		/* currently writing: wnleft,wp valid */
-
 
 struct shf {
 	Area *areap;		/* area shf/buf were allocated in */
@@ -2048,7 +2078,7 @@ struct ioword {
 	char *delim;		/* delimiter for <<, <<- */
 	char *heredoc;		/* content of heredoc */
 	unsigned short ioflag;	/* action (below) */
-	short unit;		/* unit (fd) affected */
+	signed char unit;	/* unit (fd) affected */
 };
 
 /* ioword.flag - type of redirection */
@@ -2422,7 +2452,6 @@ EXTERN struct timeval j_usrtime, j_systime;
 		    '+', (size_t)(cnst));				\
 } while (/* CONSTCOND */ 0)
 
-
 /* lalloc.c */
 void ainit(Area *);
 void afreeall(Area *);
@@ -2607,7 +2636,6 @@ pid_t j_async(void);
 int j_stopped_running(void);
 /* lex.c */
 int yylex(int);
-void yyskiputf8bom(void);
 void yyerror(const char *, ...)
     MKSH_A_NORETURN
     MKSH_A_FORMAT(__printf__, 1, 2);
@@ -2653,7 +2681,7 @@ int can_seek(int);
 void initio(void);
 void recheck_ctype(void);
 int ksh_dup2(int, int, bool);
-short savefd(int);
+int savefd(int);
 void restfd(int, int);
 void openpipe(int *);
 void closepipe(int *);
@@ -2759,7 +2787,7 @@ ssize_t shf_vfprintf(struct shf *, const char *, va_list)
 void set_ifs(const char *);
 /* syn.c */
 void initkeywords(void);
-struct op *compile(Source *, bool, bool);
+struct op *compile(Source *, bool);
 bool parse_usec(const char *, struct timeval *);
 char *yyrecursive(int);
 void yyrecursive_pop(bool);

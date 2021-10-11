@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/syn.c,v 1.130 2021/05/02 08:26:03 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/syn.c,v 1.133 2021/10/10 21:36:54 tg Exp $");
 
 struct nesting_state {
 	int start_token;	/* token than began nesting (eg, FOR) */
@@ -221,7 +221,7 @@ synio(int cf)
 		nextiop = alloc(sizeof(*iop), ATEMP);
 		nextiop->ioname = cp = alloc(3, ATEMP);
 		*cp++ = CHAR;
-		*cp++ = digits_lc[iop->unit % 10];
+		*cp++ = digits_lc[iop->unit];
 		*cp = EOS;
 
 		iop->ioflag &= ~IOBASH;
@@ -924,14 +924,12 @@ newtp(int type)
 }
 
 struct op *
-compile(Source *s, bool skiputf8bom, bool doalias)
+compile(Source *s, bool doalias)
 {
 	nesting.start_token = 0;
 	nesting.start_line = 0;
 	herep = heres;
 	source = s;
-	if (skiputf8bom)
-		yyskiputf8bom();
 	yyparse(doalias);
 	return (outtree);
 }
@@ -947,7 +945,6 @@ inalias(struct source *s)
 	}
 	return (0);
 }
-
 
 /*
  * Order important - indexed by Test_meta values

@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.879 2021/10/03 23:45:52 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.883 2021/10/10 21:33:50 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R59 2021/10/03
+	KSH R59 2021/10/10
 description:
 	Check base version of full shell
 stdin:
@@ -5610,6 +5610,20 @@ expected-stdout:
 	= 1
 	trap 2 executed
 ---
+name: uncatchable-trap
+description:
+	Ensure trying to trap SIGKILL is a nop (POSIX says undefined)
+stdin:
+	trap 'echo sighit $? .' KILL EXIT
+	"$__perlname" -e 'print $=.$/;'
+	echo meow $? .
+	(exit 7)
+expected-exit: 7
+expected-stdout:
+	60
+	meow 0 .
+	sighit 7 .
+---
 name: read-IFS-1
 description:
 	Simple test, default IFS
@@ -8947,9 +8961,7 @@ expected-stdout:
 ---
 name: utf8bom-1
 description:
-	Check that the UTF-8 Byte Order Mark is ignored as the first
-	multibyte character of the shell input (with -c, from standard
-	input, as file, or as eval argument), but nowhere else
+	Check that the UTF-8 Byte Order Mark is not ignored any more
 # breaks on Mac OSX (HFS+ non-standard UTF-8 canonical decomposition)
 category: !os:darwin,!shell:ebcdic-yes
 stdin:
@@ -8976,33 +8988,33 @@ stdin:
 	rm -rf foo
 expected-stdout:
 	got 4 files
-	ohne
+	mit
 	=
-	ohne
+	mit
 	ohne
 	mit
 	ohne
 	=
-	ohne
+	mit
 	ohne
 	mit
 	ohne
 	=
-	ohne
+	mit
 	ohne
 	mit
 	ohne
 	=
-	ohne
+	mit
 	ohne
 	mit
 	ohne
 	=
-	﻿: ohne
+	﻿: mit
 ---
 name: utf8bom-2
 description:
-	Check that we can execute BOM-shebangs (failures not fatal)
+	Check that we cannot any more execute BOM-shebangs (failures not fatal)
 	XXX if the OS can already execute them, we lose
 	note: cygwin execve(2) doesn't return to us with ENOEXEC, we lose
 	note: Ultrix perl5 t4 returns 65280 (exit-code 255) and no text
@@ -9021,13 +9033,13 @@ stdin:
 	./t2
 	./t3
 	./t4
+	echo .
 expected-stdout:
 	1 a=/nonexistant{FOO}
-	2 a=/nonexistant{FOO}
 	3 a=BAR
-	4 a=BAR
+	.
 expected-stderr-pattern:
-	/(Unrecognized character .... ignored at \..t4 line 1)*/
+	/t2: not executable: magic EFBB.*\n.*t4: not executable: magic EFBB/
 ---
 name: utf8opt-1
 description:
@@ -12901,7 +12913,6 @@ expected-stdout:
 name: funsub-2
 description:
 	You can now reliably use local and return in funsubs
-	(not exit though)
 stdin:
 	x=q; e=1; x=${ echo a; e=2; echo x$e;}; echo 1:y$x,$e,$?.
 	x=q; e=1; x=${ echo a; typeset e=2; echo x$e;}; echo 2:y$x,$e,$?.
@@ -12910,6 +12921,32 @@ expected-stdout:
 	1:ya x2,2,0.
 	2:ya x2,1,0.
 	3:ya,1,3.
+---
+name: funsub-3
+description:
+	… not exit though, like in ksh93
+stdin:
+	function foo {
+		if [[ $1 = 2 ]]; then
+			print -u2 ERR
+			exit 42
+		fi
+		print -r -- "<$1>"
+	}
+	for i in 1 2 3; do
+		print $i ${ foo $i;} || {
+			print SUB=$?
+			exit 1
+		}
+	done
+	print END=$?
+expected-stdout:
+	1 <1>
+	2
+	3 <3>
+	END=0
+expected-stderr:
+	ERR
 ---
 name: valsub-1
 description:
@@ -12942,6 +12979,30 @@ expected-stdout:
 	after:	x<8> y<2> z<7> R<4>
 	typeset t=$'foo\n\n'
 	this used to segfault.
+---
+name: valsub-2
+description:
+	Can use exit here, in contrast to funsubs
+stdin:
+	function foo {
+		if [[ $1 = 2 ]]; then
+			print -u2 ERR
+			exit 42
+		fi
+		REPLY="<$1>"
+	}
+	for i in 1 2 3; do
+		print $i ${|foo $i;} || {
+			print SUB=$?
+			exit 1
+		}
+	done
+	print END=$?
+expected-exit: 42
+expected-stdout:
+	1 <1>
+expected-stderr:
+	ERR
 ---
 name: event-subst-3
 description:
