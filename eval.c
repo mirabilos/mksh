@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.240 2021/10/03 23:38:10 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.243 2021/10/10 21:36:52 tg Exp $");
 
 /*
  * string expansion
@@ -79,6 +79,7 @@ typedef struct {
 static int varsub(Expand *, const char *, const char *, unsigned int *, int *);
 static int comsub(Expand *, const char *, int);
 static char *valsub(struct op *, Area *);
+static void funsub(struct op *);
 static char *trimsub(char *, char *, int);
 static void glob(char *, XPtrV *, bool);
 static void globit(XString *, char **, char *, XPtrV *, int);
@@ -1544,7 +1545,7 @@ comsub(Expand *xp, const char *cp, int fn)
 	s = pushs(SSTRING, ATEMP);
 	s->start = s->str = cp;
 	sold = source;
-	t = compile(s, true, doalias);
+	t = compile(s, doalias);
 	afree(s, ATEMP);
 	source = sold;
 
@@ -1610,7 +1611,7 @@ comsub(Expand *xp, const char *cp, int fn)
 		 * run tree, with output thrown into the tempfile,
 		 * in a new function block
 		 */
-		valsub(t, NULL);
+		funsub(t);
 		subst_exstat = exstat & 0xFF;
 		/* rewind the tempfile and restore regular stdout */
 		lseek(shf_fileno(shf), (off_t)0, SEEK_SET);
@@ -1825,7 +1826,6 @@ globit(XString *xs,	/* dest string */
 		odirsep = '\0'; /* keep gcc quiet */
 		se = strnul(sp);
 	}
-
 
 	/*
 	 * Check if sp needs globbing - done to avoid pattern checks for strings
@@ -2098,18 +2098,31 @@ alt_expand(XPtrV *wp, char *start, char *exp_start, char *end, int fdo)
 static char *
 valsub(struct op *t, Area *ap)
 {
-	char * volatile cp = NULL;
-	struct tbl * volatile vp = NULL;
+	char *cp;
+	struct tbl * volatile vp;
+	int i;
 
 	newenv(E_FUNC);
 	newblock();
-	if (ap)
-		vp = local(TREPLY, false);
-	if (!kshsetjmp(e->jbuf))
-		execute(t, XXCOM | XERROK, NULL);
-	if (vp)
-		strdupx(cp, str_val(vp), ap);
+	vp = local(TREPLY, false);
+	if (!(i = kshsetjmp(e->jbuf))) {
+		execute(t, XXCOM, NULL);
+		i = LRETURN;
+	}
+	strdupx(cp, str_val(vp), ap);
 	quitenv(NULL);
+	/* see CFUNC case in exec.c:comexec() */
+	if (i != LRETURN)
+		unwind(i);
 
 	return (cp);
+}
+static void
+funsub(struct op *t)
+{
+	newenv(E_FUNC);
+	newblock();
+	if (!kshsetjmp(e->jbuf))
+		execute(t, XXCOM | XERROK, NULL);
+	quitenv(NULL);
 }
