@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.809 2021/10/10 20:41:13 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.812 2021/11/11 02:44:05 tg Exp $'
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
@@ -486,7 +486,7 @@ ac_flags() {
 		ac_testn can_$vn '' "$ft" <<-'EOF'
 			/* evil apo'stroph in comment test */
 			#include <unistd.h>
-			int main(void) { return (isatty(0)); }
+			int main(void) { int t[2]; return (isatty(pipe(t))); }
 		EOF
 		#'
 	fi
@@ -1461,7 +1461,10 @@ metrowerks)
     own risk, please report success/failure to the developers.'
 	;;
 mipspro)
+	test_z "$Cg" || Cg='-g3'
 	vv '|' "$CC $CFLAGS $Cg $CPPFLAGS $LDFLAGS $NOWARN $LIBS -version"
+	: "${HAVE_STDINT_H=0}" # broken unless building with __c99
+	: "${HAVE_ATTRIBUTE_EXTENSION=0}"  # skip checking as we know it absent
 	;;
 msc)
 	ccpr=		# errorlevels are not reliable
@@ -1823,6 +1826,9 @@ icc)
 	;;
 mipspro)
 	ac_flags 1 fullwarn -fullwarn 'for remark output support'
+	# unreachable-from-prevline loop, unused variable, enum vs int @exec.c
+	# unused parameter, conversion pointer/same-sized integer
+	ac_flags 1 diagsupp '-diag_suppress 1127,1174,1185,3201,3970' 'to quieten MIPSpro down'
 	;;
 msc)
 	ac_flags 1 strpool "${ccpc}/GF" 'if string pooling can be enabled'
@@ -2586,9 +2592,10 @@ if test $legacy = 1; then
 		#define CHAR_BIT 0
 		#endif
 		struct ctasserts {
-		#define cta(name,assertion) char name[(assertion) ? 1 : -1]
 			cta(char_is_8_bits, (CHAR_BIT) == 8);
-			cta(long_is_32_bits, sizeof(long) == 4);
+			cta(long_is_4_chars, sizeof(long) == 4);
+			cta(ulong_is_32_bits, UMAX_BITS(unsigned long) == 32U);
+			cta(slong_is_31_bits, IMAX_BITS(LONG_MAX) == 31U);
 		};
 		int main(void) { return (sizeof(struct ctasserts)); }
 EOF
@@ -2600,9 +2607,10 @@ EOF
 		#define CHAR_BIT 0
 		#endif
 		struct ctasserts {
-		#define cta(name,assertion) char name[(assertion) ? 1 : -1]
 			cta(char_is_8_bits, (CHAR_BIT) == 8);
-			cta(long_is_64_bits, sizeof(long) == 8);
+			cta(long_is_8_chars, sizeof(long) == 8);
+			cta(ulong_is_64_bits, UMAX_BITS(unsigned long) == 64U);
+			cta(slong_is_63_bits, IMAX_BITS(LONG_MAX) == 63U);
 		};
 		int main(void) { return (sizeof(struct ctasserts)); }
 EOF
