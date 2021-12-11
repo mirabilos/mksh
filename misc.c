@@ -33,16 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.331 2021/11/11 02:44:07 tg Exp $");
-
-#define KSH_CHVT_FLAG
-#ifdef MKSH_SMALL
-#undef KSH_CHVT_FLAG
-#endif
-#ifdef TIOCSCTTY
-#define KSH_CHVT_CODE
-#define KSH_CHVT_FLAG
-#endif
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.337 2021/11/22 04:33:54 tg Exp $");
 
 static const unsigned char *pat_scan(const unsigned char *,
     const unsigned char *, bool) MKSH_A_PURE;
@@ -51,9 +42,7 @@ static int do_gmatch(const unsigned char *, const unsigned char *,
     const unsigned char *) MKSH_A_PURE;
 static const unsigned char *gmatch_cclass(const unsigned char *, unsigned char)
     MKSH_A_PURE;
-#ifdef KSH_CHVT_CODE
 static void chvt(const Getopt *);
-#endif
 static unsigned int dollarqU(struct shf *, const unsigned char *);
 #ifndef MKSH_SMALL
 static void dollarq8(struct shf *, const unsigned char *);
@@ -68,8 +57,9 @@ static int make_path(const char *, const char *, char **, XString *, int *);
 /* we don't need to check for other codes, EPERM won't happen */
 #define DO_SETUID(func,argvec) do {					\
 	if ((func argvec) && errno == EAGAIN)				\
-		errorf("%s failed with EAGAIN, probably due to a"	\
-		    " too low process limit; aborting", #func);		\
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |		\
+		    KWF_TWOMSG, #func, "failed, probably due to a"	\
+		    " too low process limit; aborting");		\
 } while (/* CONSTCOND */ 0)
 #else
 #define DO_SETUID(func,argvec) func argvec
@@ -91,18 +81,25 @@ Xcheck_grow(XString *xsp, const char *xp, size_t more)
 }
 
 #define SHFLAGS_DEFNS
-#define FN(sname,cname,flags,ochar)		\
-	static const struct {			\
-		/* character flag (if any) */	\
-		char c;				\
-		/* OF_* */			\
-		unsigned char optflags;		\
-		/* long name of option */	\
-		char name[sizeof(sname)];	\
-	} shoptione_ ## cname = {		\
-		ochar, flags, sname		\
+#define FN(sname,cname,flags,ochar)			\
+	static const struct shoptionS_ ## cname {	\
+		/* character flag (if any) */		\
+		char c;					\
+		/* OF_* */				\
+		unsigned char optflags;			\
+		/* long name of option */		\
+		char name[sizeof(sname)];		\
+	} shoptione_ ## cname = {			\
+		ochar, flags, sname			\
 	};
 #include "sh_flags.gen"
+
+struct ctasserts_shopts {
+#define FN(sname,cname,flags,ochar) cta(cta_ ## cname, \
+	offsetof(struct shoptionS_ ## cname, optflags) == 1 && \
+	offsetof(struct shoptionS_ ## cname, name[0]) == 2);
+#include "sh_flags.gen"
+};
 
 #define OFC(i) (options[i][-2])
 #define OFF(i) (((const unsigned char *)options[i])[-1])
@@ -243,7 +240,10 @@ getoptions(void)
 
 /* change a Flag(*) value; takes care of special actions */
 void
-change_flag(enum sh_flag f, int what, bool newset)
+change_flag(enum sh_flag f,
+    /* OF_INTERNAL, OF_FIRSTTIME, OF_CMDLINE, or OF_SET */
+    unsigned int what,
+    bool newset)
 {
 	unsigned char oldval = Flag(f);
 	unsigned char newval = (newset ? 1 : 0);
@@ -313,7 +313,7 @@ change_flag(enum sh_flag f, int what, bool newset)
 
 	if (f == FTALKING) {
 		/* Changing interactive flag? */
-		if ((what == OF_CMDLINE || what == OF_SET) && procpid == kshpid)
+		if (what == OF_CMDLINE && procpid == kshpid)
 			Flag(FTALKING_I) = newval;
 #ifndef MKSH_UNEMPLOYED
 	} else if (f == FMONITOR) {
@@ -358,7 +358,7 @@ change_xtrace(unsigned char newval, bool dosnapshot)
 	if ((Flag(FXTRACE) = newval) == 2) {
 		in_xtrace = true;
 		Flag(FXTRACE) = 0;
-		shf_puts(substitute(str_val(global("PS4")), 0), shl_xtrace);
+		shf_putsv(substitute(str_val(global("PS4")), 0), shl_xtrace);
 		Flag(FXTRACE) = 2;
 		in_xtrace = false;
 	}
@@ -371,7 +371,7 @@ change_xtrace(unsigned char newval, bool dosnapshot)
 int
 parse_args(const char **argv,
     /* OF_FIRSTTIME, OF_CMDLINE, or OF_SET */
-    int what,
+    unsigned int what,
     bool *setargsp)
 {
 	static const char cmd_opts[] =
@@ -387,8 +387,7 @@ parse_args(const char **argv,
 #undef SHFLAGS_NOT_CMD
 	    ;
 	bool set;
-	const char *opts = what == OF_CMDLINE || what == OF_FIRSTTIME ?
-	    cmd_opts : set_opts;
+	const char * const opts = what == OF_SET ? set_opts : cmd_opts;
 	const char *array = NULL;
 	Getopt go;
 	size_t i;
@@ -415,8 +414,8 @@ parse_args(const char **argv,
 				 * lone -o: print options
 				 *
 				 * Note that on the command line, -o requires
-				 * an option (ie, can't get here if what is
-				 * OF_CMDLINE).
+				 * an option (i.e. can't get here if what is
+				 * not OF_SET).
 				 */
 #if !defined(MKSH_SMALL) || defined(DEBUG)
 				if (!set && !baseline_flags[(int)FNFLAGS]) {
@@ -472,18 +471,11 @@ parse_args(const char **argv,
 			}
 			break;
 
-#ifdef KSH_CHVT_FLAG
 		case 'T':
 			if (what != OF_FIRSTTIME)
 				break;
-#ifndef KSH_CHVT_CODE
-			errorf("no TIOCSCTTY ioctl");
-#else
-			change_flag(FTALKING, OF_CMDLINE, true);
 			chvt(&go);
 			break;
-#endif
-#endif
 
 		case '?':
 			return (-1);
@@ -491,8 +483,8 @@ parse_args(const char **argv,
 		default:
 			if (what == OF_FIRSTTIME)
 				break;
-			/* -s: sort positional params (AT&T ksh stupidity) */
-			if (what == OF_SET && optc == 's') {
+			/* -s: sort positional params (via AT&T ksh) */
+			if (what == OF_SET && isch(optc, 's')) {
 				sortargs = true;
 				break;
 			}
@@ -503,18 +495,21 @@ parse_args(const char **argv,
 					break;
 				}
 			if (i == NELEM(options))
-				internal_errorf("parse_args: '%c'", optc);
+				kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
+				    "parse_args: '%c'", optc);
 		}
 	}
-	if (!(go.info & GI_MINUSMINUS) && argv[go.optind] &&
+	/* lone ‘-’ (or ‘+’)? */
+	if (argv[go.optind] && argv[go.optind][1] == '\0' &&
 	    ctype(argv[go.optind][0], C_MINUS | C_PLUS) &&
-	    argv[go.optind][1] == '\0') {
-		/* lone - clears -v and -x flags */
-		if (argv[go.optind][0] == '-') {
+	    !(go.info & GI_MINUSMINUS)) {
+		/* POSIX: lone hyphen-minus sh first arg ignored */
+		if (what == OF_SET && isch(argv[go.optind][0], '-')) {
+			/* set; lone dash clears -v and -x flags (obsolete) */
 			Flag(FVERBOSE) = 0;
 			change_xtrace(0, false);
 		}
-		/* set skips lone - or + option */
+		/* either way, skip it (POSIX only dash but… meh) */
 		go.optind++;
 	}
 	if (setargsp)
@@ -549,7 +544,12 @@ parse_args(const char **argv,
 int
 getn(const char *s, int *ai)
 {
-	return (getpn(&s, ai) && !*s);
+	if (!getpn(&s, ai))
+		return (0);
+	if (!*s)
+		return (1);
+	errno = EINVAL;
+	return (0);
 }
 
 /*
@@ -583,9 +583,11 @@ getpn(const char **sp, int *ai)
 	}
 
 	while (ctype(c, C_DIGIT)) {
-		if (num > 214748364U)
+		if (num > 214748364U) {
 			/* overflow on multiplication */
 			state = 2;
+			errno = EOVERFLOW;
+		}
 		if (state < 2) {
 			state = 1;
 			num = num * 10U + (unsigned int)ksh_numdig(c);
@@ -595,12 +597,16 @@ getpn(const char **sp, int *ai)
 	}
 	--s;
 
-	if (num > (neg ? 2147483648U : 2147483647U))
+	if (num > (neg ? 2147483648U : 2147483647U)) {
 		/* overflow for signed 32-bit int */
 		state = 2;
+		errno = EOVERFLOW;
+	}
 
 	if (state)
 		*sp = s;
+	else
+		errno = EINVAL;
 	if (state != 1) {
 		*ai = 0;
 		return (0);
@@ -1287,7 +1293,7 @@ ksh_getopt_reset(Getopt *go, int flags)
  *
  * Non-standard features:
  *	- ';' is like ':' in options, except the argument is optional
- *	  (if it isn't present, optarg is set to 0).
+ *	  (if it isn't present, optarg is set to NULL).
  *	  Used for 'set -o'.
  *	- ',' is like ':' in options, except the argument always immediately
  *	  follows the option character (optarg is set to the null string if
@@ -1337,12 +1343,11 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 			go->buf[0] = c;
 			go->optarg = go->buf;
 		} else {
-			warningf(true, Tf_optfoo,
-			    (go->flags & GF_NONAME) ? "" : argv[0],
-			    (go->flags & GF_NONAME) ? "" : Tcolsp,
-			    c, Tunknown_option);
+			ksh_getopt_opterr(c,
+			    (go->flags & GF_NONAME) ? null : argv[0],
+			    Tunknown_option);
 			if (go->flags & GF_ERROR)
-				bi_errorfz();
+				bi_unwind(1);
 		}
 		return (ORD('?'));
 	}
@@ -1365,12 +1370,11 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 				go->optarg = go->buf;
 				return (ORD(':'));
 			}
-			warningf(true, Tf_optfoo,
-			    (go->flags & GF_NONAME) ? "" : argv[0],
-			    (go->flags & GF_NONAME) ? "" : Tcolsp,
-			    c, Treq_arg);
+			ksh_getopt_opterr(c,
+			    (go->flags & GF_NONAME) ? null : argv[0],
+			    Treq_arg);
 			if (go->flags & GF_ERROR)
-				bi_errorfz();
+				bi_unwind(1);
 			return (ORD('?'));
 		}
 		go->p = 0;
@@ -1400,6 +1404,20 @@ ksh_getopt(const char **argv, Getopt *go, const char *optionsp)
 		}
 	}
 	return (ord(c));
+}
+
+void
+ksh_getopt_opterr(int ch, const char *name, const char *msg)
+{
+	static char buf[3] = { '-', KSH_BEL, '\0' };
+
+	buf[1] = ch;
+	if (name == null || name == kshname)
+		kwarnf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+		    KWF_TWOMSG | KWF_NOERRNO, buf, msg);
+	else
+		kwarnf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+		    KWF_THREEMSG | KWF_NOERRNO, name, buf, msg);
 }
 
 /*
@@ -1683,7 +1701,8 @@ print_columns(struct columnise_opts *opts, unsigned int n,
 
 	if (max_colz > 2147483646) {
 #ifndef MKSH_SMALL
-		internal_warningf("print_columns called with %s=%zu >= INT_MAX",
+		kwarnf0(KWF_INTERNAL | KWF_WARNING | KWF_NOERRNO,
+		    "print_columns called with %s=%zu >= INT_MAX",
 		    "max_col", max_colz);
 #endif
 		return;
@@ -1692,7 +1711,8 @@ print_columns(struct columnise_opts *opts, unsigned int n,
 
 	if (max_oct > 2147483646) {
 #ifndef MKSH_SMALL
-		internal_warningf("print_columns called with %s=%zu >= INT_MAX",
+		kwarnf0(KWF_INTERNAL | KWF_WARNING | KWF_NOERRNO,
+		    "print_columns called with %s=%zu >= INT_MAX",
 		    "max_oct", max_oct);
 #endif
 		return;
@@ -2467,7 +2487,7 @@ c_cd(const char **wp)
 	 * setting in AT&T ksh)
 	 */
 	if (current_wd[0])
-		/* Ignore failure (happens if readonly or integer) */
+		/* Ignore failure (happens if read-only or integer) */
 		setstr(oldpwd_s, current_wd, KSH_RETURN_ERROR);
 
 	if (!mksh_abspath(Xstring(xs, xp))) {
@@ -2486,7 +2506,7 @@ c_cd(const char **wp)
 		char *ptmp = pwd;
 
 		set_current_wd(ptmp);
-		/* Ignore failure (happens if readonly or integer) */
+		/* Ignore failure (happens if read-only or integer) */
 		setstr(pwd_s, ptmp, KSH_RETURN_ERROR);
 	} else {
 		set_current_wd(null);
@@ -2503,84 +2523,166 @@ c_cd(const char **wp)
 	return (rv);
 }
 
-#ifdef KSH_CHVT_CODE
 extern void chvt_reinit(void);
 
 static void
 chvt(const Getopt *go)
 {
+	char buf[99], ch;
 	const char *dv = go->optarg;
-	char *cp = NULL;
-	int fd;
+	int fd, pfd[2];
+	pid_t cpid;
+	bool isdaemon = false, dowait = false;
+#ifndef MKSH_DISABLE_REVOKE_WARNING
+	int revwarn = 0;
+#if !HAVE_REVOKE
+#define ifrevwarn
+#else
+#define ifrevwarn if (revwarn)
+#endif
+#endif
 
-	switch (*dv) {
-	case '-':
+	switch (ord(*dv)) {
+	case ORD('-'):
+		isdaemon = true;
 		dv = "/dev/null";
 		break;
-	case '!':
+	case ORD('!'):
+		dowait = true;
 		++dv;
 		/* FALLTHROUGH */
 	default: {
 		struct stat sb;
 
 		if (stat(dv, &sb)) {
-			cp = shf_smprintf("/dev/ttyC%s", dv);
-			dv = cp;
-			if (stat(dv, &sb)) {
-				memmove(cp + 1, cp, /* /dev/tty */ 8);
-				dv = cp + 1;
-				if (stat(dv, &sb)) {
-					errorf(Tchvt2,
-					    "can't find tty", go->optarg);
-				}
+			int E = errno;
+
+			memcpy(buf, "/dev/ttyC", 9U);
+			strlcpy(buf + 9U, dv, sizeof(buf) - 9U);
+			if (stat(buf, &sb)) {
+				strlcpy(buf + 8U, dv, sizeof(buf) - 8U);
+				if (stat(buf, &sb))
+					kerrf(KWF_VERRNO | KWF_ERR(1) |
+					    KWF_PREFIX | KWF_TWOMSG, E,
+					    "chvt", dv);
 			}
+			dv = buf;
 		}
 		if (!S_ISCHR(sb.st_mode))
-			errorf(Tchvt2, "not a char device", dv);
+			kerrf(KWF_VERRNO | KWF_ERR(1) | KWF_PREFIX |
+			    KWF_TWOMSG, (int)(ENOTTY), "chvt", dv);
 #ifndef MKSH_DISABLE_REVOKE_WARNING
-#if HAVE_REVOKE
-		if (revoke(dv))
+#if !HAVE_REVOKE
+#ifdef ENOSYS
+		revwarn = ENOSYS;
+#else
+		revwarn = EINVAL;
 #endif
-			warningf(false, Tchvt2,
-			    "new shell is potentially insecure, can't revoke",
-			    dv);
+#else
+		revwarn = revoke(dv) ? errno : 0;
+#endif
+		ifrevwarn kwarnf(KWF_VERRNO | KWF_PREFIX | KWF_THREEMSG,
+		    revwarn, "chvt", dv,
+		    "can't revoke; new shell is potentially insecure");
 #endif
 	    }
 	}
-	if ((fd = binopen2(dv, O_RDWR)) < 0) {
-		sleep(1);
-		if ((fd = binopen2(dv, O_RDWR)) < 0) {
-			errorf(Tchvt2, Topen, dv);
+	if (pipe(pfd))
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_TWOMSG, "chvt", "pipe");
+	switch ((cpid = fork())) {
+	case -1:
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_TWOMSG, "chvt", "fork");
+	case 0:
+		close(pfd[0]);
+		break;
+	default:
+		close(pfd[1]);
+		if (read(pfd[0], &ch, 1) != 1 || !isch(ch, '.'))
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_THREEMSG |
+			    KWF_NOERRNO, "chvt", dv,
+			    "child process initialisation failure");
+		close(pfd[0]);
+		if (dowait) {
+			pid_t corpse;
+			int status;
+
+			while (/* CONSTCOND */ 1) {
+#ifndef MKSH_NOPROSPECTOFWORK
+				corpse = waitpid(cpid, &status, 0);
+#else
+				corpse = wait(&status);
+#endif
+				if (corpse == -1) {
+					status = errno;
+					if (status == ECHILD)
+						break;
+					if (status == EINTR)
+						continue;
+					kerrf(KWF_ERR(1) | KWF_PREFIX |
+					    KWF_TWOMSG, "chvt", "wait");
+				}
+#ifdef MKSH_NOPROSPECTOFWORK
+				/* should not happen but… */
+				if (corpse != cpid)
+					continue;
+#endif
+				if (WIFSIGNALED(status)) {
+					status = WTERMSIG(status);
+					dv = status > 0 && status < ksh_NSIG ?
+					    ksh_sigmess(status) : NULL;
+					if (ksh_sigmessf(dv))
+						dv = "Signalled";
+					kwarnf(KWF_PREFIX | KWF_TWOMSG |
+					    KWF_NOERRNO, "chvt", dv);
+				} else if (WIFEXITED(status)) {
+					status = (WEXITSTATUS(status)) & 255;
+					if (!status)
+						break;
+					kwarnf0(KWF_PREFIX | KWF_NOERRNO,
+					    TchvtDone, status);
+				} else
+					continue;
+			}
 		}
-	}
-	afree(cp, ATEMP);
-	if (go->optarg[0] != '!') {
-		switch (fork()) {
-		case -1:
-			errorf(Tchvt_failed, "fork");
-		case 0:
-			break;
-		default:
-			exit(0);
-		}
+		exit(0);
 	}
 	if (setsid() == -1)
-		errorf(Tchvt_failed, "setsid");
-	if (go->optarg[0] != '-') {
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_TWOMSG, "chvt", "setsid");
+	if ((fd = binopen2(dv, O_RDWR)) < 0) {
+		sleep(1);
+		if ((fd = binopen2(dv, O_RDWR)) < 0)
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_THREEMSG,
+			    "chvt", dv, Topen);
+	}
+	if (!isdaemon) {
+#ifdef TIOCSCTTY
 		if (ioctl(fd, TIOCSCTTY, NULL) == -1)
-			errorf(Tchvt_failed, "TIOCSCTTY");
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_TWOMSG,
+			    "chvt", "TIOCSCTTY");
+#endif
 		if (tcflush(fd, TCIOFLUSH))
-			errorf(Tchvt_failed, "TCIOFLUSH");
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_TWOMSG,
+			    "chvt", "TCIOFLUSH");
 	}
 	ksh_dup2(fd, 0, false);
 	ksh_dup2(fd, 1, false);
 	ksh_dup2(fd, 2, false);
+#ifndef MKSH_DISABLE_REVOKE_WARNING
+	if (!isdaemon) {
+		ifrevwarn kwarnf(KWF_VERRNO | KWF_PREFIX | KWF_THREEMSG,
+		    revwarn, "chvt", dv,
+		    "can't revoke; new shell is potentially insecure");
+	}
+#endif
 	if (fd > 2)
 		close(fd);
 	rndset((unsigned long)chvt_rndsetup(go, sizeof(Getopt)));
 	chvt_reinit();
+	/* signal parent the all OK */
+	if (write(pfd[1], Tdot, 1) != 1)
+		kwarnf(KWF_PREFIX | KWF_TWOMSG, "chvt", "write");
+	close(pfd[1]);
 }
-#endif
 
 #if defined(MKSH_SMALL) && !defined(MKSH_SMALL_BUT_FAST)
 char *
@@ -2641,7 +2743,8 @@ ksh_getrusage(int what, struct rusage *ru)
 	errno = EINVAL;
 #endif
 	if ((CLK_TCK = sysconf(_SC_CLK_TCK)) == -1L)
-		internal_errorf("sysconf(_SC_CLK_TCK): %s", cstrerror(errno));
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG,
+		    "sysconf(_SC_CLK_TCK)");
 #endif
 	INVTCK(ru->ru_utime, u);
 	INVTCK(ru->ru_stime, s);

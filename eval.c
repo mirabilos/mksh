@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.243 2021/10/10 21:36:52 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.247 2021/11/21 04:15:00 tg Exp $");
 
 /*
  * string expansion
@@ -132,7 +132,8 @@ substitute(const char *cp, int f)
 	s->start = s->str = cp;
 	source = s;
 	if (yylex(ONEWORD) != LWORD)
-		internal_errorf(Tbadsubst);
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG | KWF_NOERRNO,
+		    Tbadsubst);
 	source = sold;
 	afree(s, ATEMP);
 	return (evalstr(yylval.cp, f));
@@ -255,7 +256,8 @@ expand(
 	char *cp;
 
 	if (ccp == NULL)
-		internal_errorf("expand(NULL)");
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG | KWF_NOERRNO,
+		    "expand(NULL)");
 	/* for alias, readonly, set, typeset commands */
 	if ((f & DOVACHECK) && is_wdvarassign(ccp)) {
 		f &= ~(DOVACHECK | DOBLANK | DOGLOB | DOTILDE);
@@ -406,7 +408,9 @@ expand(
 						*end = EOS;
 					str = snptreef(NULL, 64, Tf_S, beg);
 					afree(beg, ATEMP);
-					errorf(Tf_sD_s, str, Tbadsubst);
+					kerrf(KWF_ERR(1) | KWF_PREFIX |
+					    KWF_FILELINE | KWF_TWOMSG |
+					    KWF_NOERRNO, str, Tbadsubst);
 				}
 				if (f & DOBLANK)
 					doblank++;
@@ -705,8 +709,10 @@ expand(
 						break;
 					case ORD('?'):
 						if (*sp == CSUBST)
-							errorf("%s: parameter null or not set",
-							    st->var->name);
+							kerrf(KWF_ERR(1) | KWF_PREFIX |
+							    KWF_FILELINE | KWF_TWOMSG |
+							    KWF_NOERRNO, st->var->name,
+							    "parameter null or not set");
 						f &= ~DOBLANK;
 						f |= DOTEMP;
 						/* FALLTHROUGH */
@@ -787,9 +793,9 @@ expand(
 					 * in AT&T ksh.
 					 */
 					/*
-					 * XXX POSIX says readonly is only
+					 * XXX POSIX says read-only is only
 					 * fatal for special builtins (setstr
-					 * does readonly check).
+					 * does read-only check).
 					 */
 					len = strlen(dp) + 1;
 					setstr(st->var,
@@ -805,7 +811,9 @@ expand(
 				case ORD('?'):
 					dp = Xrestpos(ds, dp, st->base);
 
-					errorf(Tf_sD_s, st->var->name,
+					kerrf(KWF_ERR(1) | KWF_PREFIX |
+					    KWF_FILELINE | KWF_TWOMSG |
+					    KWF_NOERRNO, st->var->name,
 					    debunk(dp, dp, strlen(dp) + 1));
 					break;
 				case ORD('#') | STYPE_AT:
@@ -1320,12 +1328,13 @@ varsub(Expand *xp, const char *sp, const char *word,
 			}
 			xp->var = global(sp);
 			/* use saved p from above */
-			xp->str = p ? shf_smprintf("%s[%lu]", xp->var->name,
+			xp->str = p ? shf_smprintf(Tf_sSQlu, xp->var->name,
 			    arrayindex(xp->var)) : xp->var->name;
 			break;
 #ifdef DEBUG
 		default:
-			internal_errorf("stype mismatch");
+			kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG | KWF_NOERRNO,
+			    "stype mismatch");
 			/* NOTREACHED */
 #endif
 		case ORD('%'):
@@ -1371,7 +1380,9 @@ varsub(Expand *xp, const char *sp, const char *word,
 			}
 			/* ${%var} also here */
 			if (Flag(FNOUNSET) && sc == 0 && !zero_ok)
-				errorf(Tf_parm, sp);
+				kerrf(KWF_ERR(1) | KWF_PREFIX |
+				    KWF_FILELINE | KWF_TWOMSG |
+				    KWF_NOERRNO, sp, Tf_parm);
 			xp->str = shf_smprintf(Tf_d, sc);
 			break;
 		}
@@ -1514,7 +1525,8 @@ varsub(Expand *xp, const char *sp, const char *word,
 		state = XBASE;
 	if (Flag(FNOUNSET) && xp->str == null && !zero_ok &&
 	    (ctype(c, C_SUB2) || (state != XBASE && c != ORD('+'))))
-		errorf(Tf_parm, sp);
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE | KWF_TWOMSG |
+		    KWF_NOERRNO, sp, Tf_parm);
 	*stypep = stype;
 	*slenp = slen;
 	return (state);
@@ -1568,8 +1580,9 @@ comsub(Expand *xp, const char *cp, int fn)
 			shf = shf_open(name = evalstr(io->ioname, DOTILDE),
 				O_RDONLY, 0, SHF_MAPHI | SHF_CLEXEC);
 			if (shf == NULL)
-				warningf(!Flag(FTALKING), Tf_sD_sD_s,
-				    name, Tcant_filesub, cstrerror(errno));
+				kwarnf(KWF_PREFIX | (Flag(FTALKING) ?
+				    KWF_FILELINE : 0) | KWF_TWOMSG,
+				    name, Tcant_filesub);
 			break;
 		case IOHERE:
 			if (!herein(io, &name)) {
@@ -1584,7 +1597,8 @@ comsub(Expand *xp, const char *cp, int fn)
 			shf = NULL;
 			break;
 		default:
-			errorf(Tf_sD_s, T_funny_command,
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+			    KWF_TWOMSG | KWF_NOERRNO, T_funny_command,
 			    snptreef(NULL, 32, Tft_R, io));
 		}
 	} else if (fn == FUNSUB) {
@@ -1596,10 +1610,9 @@ comsub(Expand *xp, const char *cp, int fn)
 		 * with an shf open for reading (buffered) but yet unused
 		 */
 		maketemp(ATEMP, TT_FUNSUB, &tf);
-		if (!tf->shf) {
-			errorf(Tf_temp,
-			    Tcreate, tf->tffn, cstrerror(errno));
-		}
+		if (!tf->shf)
+			kerrf0(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE,
+			    Tf_temp, Tcreate, tf->tffn);
 		/* extract shf from temporary file, unlink and free it */
 		shf = tf->shf;
 		unlink(tf->tffn);
@@ -1758,6 +1771,8 @@ globit(XString *xs,	/* dest string */
 	char *xp = *xpp;
 	char *se;
 	char odirsep;
+	DIR *dirp;
+	size_t prefix_len;
 
 	/* This to allow long expansions to be interrupted */
 	intrcheck();
@@ -1816,6 +1831,7 @@ globit(XString *xs,	/* dest string */
 		Xcheck(*xs, xp);
 		*xp++ = *sp++;
 	}
+	*xp = '\0';
 	np = mksh_sdirsep(sp);
 	if (np != NULL) {
 		se = np;
@@ -1840,39 +1856,30 @@ globit(XString *xs,	/* dest string */
 		xp = strnul(xp);
 		*xpp = xp;
 		globit(xs, xpp, np, wp, check);
-	} else {
-		DIR *dirp;
+	} else if ((dirp = opendir((prefix_len = Xlength(*xs, xp)) ?
+	    Xstring(*xs, xp) : Tdot))) {
 		struct dirent *d;
-		char *name;
-		size_t len, prefix_len;
 
-		/* xp = *xpp;	copy_non_glob() may have re-alloc'd xs */
-		*xp = '\0';
-		prefix_len = Xlength(*xs, xp);
-		dirp = opendir(prefix_len ? Xstring(*xs, xp) : Tdot);
-		if (dirp == NULL)
-			goto Nodir;
 		while ((d = readdir(dirp)) != NULL) {
-			name = d->d_name;
-			if (name[0] == '.' &&
-			    (name[1] == 0 || (name[1] == '.' && name[2] == 0)))
+			size_t len;
+
+			if (isch(d->d_name[0], '.') && (!d->d_name[1] ||
+			    (isch(d->d_name[1], '.') && !d->d_name[2])))
 				/* always ignore . and .. */
 				continue;
-			if ((*name == '.' && *sp != '.') ||
-			    !gmatchx(name, sp, true))
+			if ((isch(d->d_name[0], '.') && !isch(*sp, '.')) ||
+			    !gmatchx(d->d_name, sp, true))
 				continue;
 
 			len = strlen(d->d_name) + 1;
 			XcheckN(*xs, xp, len);
-			memcpy(xp, name, len);
+			memcpy(xp, d->d_name, len);
 			*xpp = xp + len - 1;
 			globit(xs, xpp, np, wp, (check & GF_MARKDIR) |
 			    GF_GLOBBED | (np ? GF_EXCHECK : GF_NONE));
 			xp = Xstring(*xs, xp) + prefix_len;
 		}
 		closedir(dirp);
- Nodir:
-		;
 	}
 
 	if (np != NULL)

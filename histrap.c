@@ -28,7 +28,7 @@
 #include <sys/file.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/histrap.c,v 1.176 2021/10/10 20:41:16 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/histrap.c,v 1.181 2021/11/21 04:15:03 tg Exp $");
 
 Trap sigtraps[ksh_NSIG + 1];
 
@@ -109,9 +109,9 @@ c_fc(const char **wp)
 				size_t len = strlen(p);
 
 				/* almost certainly not overflowing */
-				editor = alloc(len + 4, ATEMP);
+				editor = alloc(len + 6U, ATEMP);
 				memcpy(editor, p, len);
-				memcpy(editor + len, Tspdollaru, 4);
+				memcpy(editor + len, Tspdollaru, 6U);
 			}
 			break;
 
@@ -294,14 +294,14 @@ c_fc(const char **wp)
 
 	tf = maketemp(ATEMP, TT_HIST_EDIT, &e->temps);
 	if (!(shf = tf->shf)) {
-		bi_errorf(Tf_temp, Tcreate, tf->tffn, cstrerror(errno));
+		kwarnf0(KWF_BIERR, Tf_temp, Tcreate, tf->tffn);
 		return (1);
 	}
 	for (hp = rflag ? hlast : hfirst;
 	    hp >= hfirst && hp <= hlast; hp += rflag ? -1 : 1)
 		shf_fprintf(shf, Tf_sN, *hp);
 	if (shf_close(shf) == -1) {
-		bi_errorf(Tf_temp, Twrite, tf->tffn, cstrerror(errno));
+		kwarnf0(KWF_BIERR, Tf_temp, Twrite, tf->tffn);
 		return (1);
 	}
 
@@ -318,15 +318,15 @@ c_fc(const char **wp)
 		ssize_t n;
 
 		if (!(shf = shf_open(tf->tffn, O_RDONLY, 0, 0))) {
-			bi_errorf(Tf_temp, Topen, tf->tffn, cstrerror(errno));
+			kwarnf0(KWF_BIERR, Tf_temp, Topen, tf->tffn);
 			return (1);
 		}
 
 		if (stat(tf->tffn, &statb) < 0)
 			n = 128;
 		else if ((off_t)statb.st_size > MKSH_MAXHISTFSIZE) {
-			bi_errorf(Tf_toolarge, Thistory,
-			    Tfile, (unsigned long)statb.st_size);
+			bi_errorf(Tf_toolarge, Tfile,
+			    (unsigned long)statb.st_size);
 			goto errout;
 		} else
 			n = (size_t)statb.st_size + 1;
@@ -337,8 +337,8 @@ c_fc(const char **wp)
 				XcheckN(xs, xp, Xlength(xs, xp));
 		}
 		if (n < 0) {
-			bi_errorf(Tf_temp, Tread, tf->tffn,
-			    cstrerror(shf_errno(shf)));
+			kwarnf1(KWF_VERRNO | KWF_BIERR, shf_errno(shf),
+			    Tf_temp, Tread, tf->tffn);
  errout:
 			shf_close(shf);
 			return (1);
@@ -871,7 +871,7 @@ hist_persist_init(void)
 			goto retry;
 		}
 		if (hs != hist_init_retry)
-			bi_errorf(Tf_cant_ss_s,
+			bi_errorf("can't %s %s: %s",
 			    "unlink HISTFILE", hname, cstrerror(errno));
 		histfsize = 0;
 		return;
@@ -1047,12 +1047,6 @@ static const struct mksh_sigpair {
 };
 #endif
 
-#if HAVE_SYS_SIGLIST
-#if !HAVE_SYS_SIGLIST_DECL
-extern const char * const sys_siglist[];
-#endif
-#endif
-
 void
 inittraps(void)
 {
@@ -1082,9 +1076,9 @@ inittraps(void)
 			char *s;
 
 			/* this is not optimal, what about SIGSIG1? */
-			if (ksh_eq(cs[0], 'S', 's') &&
-			    ksh_eq(cs[1], 'I', 'i') &&
-			    ksh_eq(cs[2], 'G', 'g') &&
+			if (isCh(cs[0], 'S', 's') &&
+			    isCh(cs[1], 'I', 'i') &&
+			    isCh(cs[2], 'G', 'g') &&
 			    cs[3] != '\0') {
 				/* skip leading "SIG" */
 				cs += 3;
@@ -1097,23 +1091,16 @@ inittraps(void)
 			if (!strcmp(sigtraps[i].name, "EXIT") ||
 			    !strcmp(sigtraps[i].name, "ERR")) {
 #ifndef MKSH_SMALL
-				internal_warningf(Tinvname, sigtraps[i].name,
-				    "signal");
+				kwarnf0(KWF_INTERNAL | KWF_WARNING | KWF_NOERRNO,
+				    Tinvname, sigtraps[i].name, "signal");
 #endif
 				sigtraps[i].name = null;
 			}
 		}
 		if (sigtraps[i].name == null)
 			sigtraps[i].name = shf_smprintf(Tf_d, i);
-#if HAVE_SYS_SIGLIST
-		sigtraps[i].mess = sys_siglist[i];
-#elif HAVE_STRSIGNAL
-		sigtraps[i].mess = strsignal(i);
-#else
-		sigtraps[i].mess = NULL;
-#endif
-		if ((sigtraps[i].mess == NULL) ||
-		    (sigtraps[i].mess[0] == '\0'))
+		sigtraps[i].mess = ksh_sigmess(i);
+		if (ksh_sigmessf(sigtraps[i].mess))
 			sigtraps[i].mess = shf_smprintf(Tf_sd,
 			    "Signal", i);
 	}
@@ -1181,9 +1168,9 @@ gettrap(const char *cs, bool igncase, bool allsigs)
 	/* do a lookup by name then */
 
 	/* this breaks SIGSIG1, but we do that above anyway */
-	if (ksh_eq(cs[0], 'S', 's') &&
-	    ksh_eq(cs[1], 'I', 'i') &&
-	    ksh_eq(cs[2], 'G', 'g') &&
+	if (isCh(cs[0], 'S', 's') &&
+	    isCh(cs[1], 'I', 'i') &&
+	    isCh(cs[2], 'G', 'g') &&
 	    cs[3] != '\0') {
 		/* skip leading "SIG" */
 		cs += 3;
@@ -1304,7 +1291,8 @@ runtraps(int flag)
 
 	if (ksh_tmout_state == TMOUT_LEAVING) {
 		ksh_tmout_state = TMOUT_EXECUTING;
-		warningf(false, "timed out waiting for input");
+		kwarnf(KWF_PREFIX | KWF_ONEMSG | KWF_NOERRNO,
+		    "timed out waiting for input");
 		unwind(LEXIT);
 	} else
 		/*
@@ -1548,8 +1536,8 @@ setexecsig(Trap *p, int restore)
 {
 	/* XXX debugging */
 	if (!(p->flags & (TF_ORIG_IGN|TF_ORIG_DFL)))
-		internal_errorf("setexecsig: unset signal %d(%s)",
-		    p->signal, p->name);
+		kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
+		    "setexecsig: unset signal %d(%s)", p->signal, p->name);
 
 	/* restore original value for exec'd kids */
 	p->flags &= ~(TF_EXEC_IGN|TF_EXEC_DFL);

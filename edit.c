@@ -29,7 +29,7 @@
 
 #ifndef MKSH_NO_CMDLINE_EDITING
 
-__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.393 2021/10/27 00:56:48 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/edit.c,v 1.396 2021/11/21 04:14:59 tg Exp $");
 
 /*
  * in later versions we might use libtermcap for this, but since external
@@ -419,7 +419,8 @@ x_file_glob(int *flagsp, char *toglob, char ***wordsp)
 	source = s;
 	if (yylex(ONEWORD | LQCHAR) != LWORD) {
 		source = sold;
-		internal_warningf(Tfg_badsubst);
+		kwarnf(KWF_INTERNAL | KWF_WARNING | KWF_ONEMSG | KWF_NOERRNO,
+		    Tfg_badsubst);
 		nwords = 0;
 		goto out;
 	}
@@ -2368,7 +2369,7 @@ x_meta_yank(int c MKSH_A_UNUSED)
 	if ((x_last_command != XFUNC_yank && x_last_command != XFUNC_meta_yank) ||
 	    killstack[killtp] == 0) {
 		killtp = killsp;
-		x_e_puts("\nyank something first");
+		x_e_puts(Tyankfirst);
 		x_redraw('\n');
 		return (KSTD);
 	}
@@ -4076,7 +4077,7 @@ vi_hook(int ch)
 		case 0:
 			if (insert != 0) {
 				if (lastcmd[0] == 's' ||
-				    ksh_eq(lastcmd[0], 'C', 'c')) {
+				    isCh(lastcmd[0], 'C', 'c')) {
 					if (redo_insert(1) != 0)
 						vi_error();
 				} else {
@@ -4205,7 +4206,7 @@ vi_insert(int ch)
 			lastcmd[0] = 'a';
 			lastac = 1;
 		}
-		if (lastcmd[0] == 's' || ksh_eq(lastcmd[0], 'C', 'c'))
+		if (lastcmd[0] == 's' || isCh(lastcmd[0], 'C', 'c'))
 			return (redo_insert(0));
 		else
 			return (redo_insert(lastac - 1));
@@ -4365,7 +4366,7 @@ vi_cmd(int argcnt, const char *cmd)
 			else {
 				if ((ncursor = domove(argcnt, &cmd[1], 1)) < 0)
 					return (-1);
-				if (*cmd == 'c' && ksh_eq(cmd[1], 'W', 'w') &&
+				if (*cmd == 'c' && isCh(cmd[1], 'W', 'w') &&
 				    !ctype(vs->cbuf[vs->cursor], C_SPACE)) {
 					do {
 						--ncursor;
@@ -4796,7 +4797,7 @@ domove(int argcnt, const char *cmd, int sub)
 	case ORD(';'):
 		if (fsavecmd == ORD(' '))
 			return (-1);
-		i = ksh_eq(fsavecmd, 'F', 'f');
+		i = isCh(fsavecmd, 'F', 'f');
 		t = rtt2asc(fsavecmd) > rtt2asc('a');
 		if (*cmd == ',')
 			t = !t;
@@ -5211,7 +5212,8 @@ grabhist(int save, int n)
 	}
 	(void)histnum(n);
 	if ((hptr = *histpos()) == NULL) {
-		internal_warningf("grabhist: bad history array");
+		kwarnf(KWF_INTERNAL | KWF_WARNING | KWF_ONEMSG | KWF_NOERRNO,
+		    "grabhist: bad history array");
 		return (-1);
 	}
 	if (save)
