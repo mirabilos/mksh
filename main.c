@@ -28,14 +28,12 @@
 #define EXTERN
 #include "sh.h"
 
-#if HAVE_LANGINFO_CODESET
+#if HAVE_POSIX_UTF8_LOCALE
+#include <locale.h>
 #include <langinfo.h>
 #endif
-#if HAVE_SETLOCALE_CTYPE
-#include <locale.h>
-#endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.400 2021/11/11 02:44:06 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.407 2021/11/22 04:26:55 tg Exp $");
 
 #ifndef MKSHRC_PATH
 #define MKSHRC_PATH	"~/.mkshrc"
@@ -45,7 +43,7 @@ __RCSID("$MirOS: src/bin/mksh/main.c,v 1.400 2021/11/11 02:44:06 tg Exp $");
 #define MKSH_DEFAULT_TMPDIR	MKSH_UNIXROOT "/tmp"
 #endif
 
-#if !HAVE_SETLOCALE_CTYPE
+#if !HAVE_POSIX_UTF8_LOCALE
 /* this is the “implementation-defined default locale” */
 #ifdef MKSH_DEFAULT_UTFLOC
 #define MKSH_DEFAULT_LOCALE	"UTF-8"
@@ -54,7 +52,6 @@ __RCSID("$MirOS: src/bin/mksh/main.c,v 1.400 2021/11/11 02:44:06 tg Exp $");
 #endif
 #endif
 
-static kby isuc(const char *);
 static int main_init(int, const char *[], Source **, struct block **);
 void chvt_reinit(void);
 static void reclaim(void);
@@ -104,13 +101,12 @@ static const char *restr_com[] = {
 
 extern const char Tpipest[];
 
-static bool initio_done;
-
 /* top-level parsing and execution environment */
 static struct env env;
 struct env *e = &env;
 
 /* compile-time assertions */
+struct ctasserts_main {
 
 /* this one should be defined by the standard */
 cta(char_is_1_char, (sizeof(char) == 1) && (sizeof(signed char) == 1) &&
@@ -170,6 +166,9 @@ cta(sizet_funcptr_same_size, sizeof(size_t) == sizeof(void (*)(void)));
 cta(ptr_fits_in_long, sizeof(size_t) <= sizeof(long));
 cta(ari_fits_in_long, sizeof(mksh_ari_t) <= sizeof(long));
 
+};
+/* end of compile-time asserts */
+
 static mksh_uari_t
 rndsetup(void)
 {
@@ -225,26 +224,49 @@ static const char *empty_argv[] = {
 	Tmksh, NULL
 };
 
+#ifndef MKSH_EARLY_LOCALE_TRACKING
 static kby
 isuc(const char *cx) {
-	char *cp, *x;
-	kby rv = 0;
+	const char *cp;
 
 	if (!cx || !*cx)
 		return (0);
 
-	/* uppercase a string duplicate */
-	strdupx(x, cx, ATEMP);
-	cp = x;
-	while ((*cp = ksh_toupper(*cp)))
+	if ((cp = cstrchr(cx, '.')))
 		++cp;
+	else
+		cp = cx;
+	if (!isCh(cp[0], 'U', 'u') ||
+	    !isCh(cp[1], 'T', 't') ||
+	    !isCh(cp[2], 'F', 'f'))
+		return (0);
+	cp += isch(cp[3], '-') ? 4 : 3;
+	return (isch(*cp, '8') && (isch(cp[1], '@') || !cp[1]));
+}
+#endif
 
-	/* check for UTF-8 */
-	if (vstrstr(x, "UTF-8") || vstrstr(x, "UTF8"))
-		rv = 1;
+kby
+kshname_islogin(const char **kshbasenamep)
+{
+	const char *cp;
+	size_t o;
+	kby rv;
 
-	/* free copy and out */
-	afree(x, ATEMP);
+	/* determine the basename (without '-' or path) of the executable */
+	cp = kshname;
+	o = 0;
+	while ((rv = cp[o++])) {
+		if (mksh_cdirsep(rv)) {
+			cp += o;
+			o = 0;
+		}
+	}
+	rv = isch(*cp, '-') || isch(*kshname, '-');
+	if (isch(*cp, '-'))
+		++cp;
+	if (!*cp)
+		cp = empty_argv[0];
+	*kshbasenamep = cp;
 	return (rv);
 }
 
@@ -252,7 +274,7 @@ isuc(const char *cx) {
 static int
 main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 {
-	int argi, i;
+	int argi = 0, i;
 	Source *s = NULL;
 	struct block *l;
 	unsigned char restricted_shell = 0, errexit, utf_flag;
@@ -298,23 +320,11 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	/* set up global l->vars and l->funs */
 	newblock();
 
-	/* Do this first so output routines (eg, errorf, shellf) can work */
+	/* Do this first so output routines (eg. kwarnf, shellf) can work */
 	initio();
 
-	/* determine the basename (without '-' or path) of the executable */
-	ccp = kshname;
-	argi = 0;
-	while ((i = ccp[argi++])) {
-		if (mksh_cdirsep(i)) {
-			ccp += argi;
-			argi = 0;
-		}
-	}
-	Flag(FLOGIN) = (ord(*ccp) == ORD('-')) || (ord(*kshname) == ORD('-'));
-	if (ord(*ccp) == ORD('-'))
-		++ccp;
-	if (!*ccp)
-		ccp = empty_argv[0];
+	/* check kshname: leading dash, determine basename */
+	Flag(FLOGIN) = kshname_islogin(&ccp);
 
 	/*
 	 * Turn on nohup by default. (AT&T ksh does not have a nohup
@@ -355,14 +365,14 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		if (argi < 0)
 			return (1);
 		/* called as rsh, rmksh, -rsh, RKSH.EXE, etc.? */
-		if (ksh_eq(*ccp, 'R', 'r')) {
+		if (isCh(*ccp, 'R', 'r')) {
 			++ccp;
 			++restricted_shell;
 		}
 #if defined(MKSH_BINSHPOSIX) || defined(MKSH_BINSHREDUCED)
 		/* are we called as -rsh or /bin/sh or SH.EXE or so? */
-		if (ksh_eq(ccp[0], 'S', 's') &&
-		    ksh_eq(ccp[1], 'H', 'h')) {
+		if (isCh(ccp[0], 'S', 's') &&
+		    isCh(ccp[1], 'H', 'h')) {
 			/* either also turns off braceexpand */
 #ifdef MKSH_BINSHPOSIX
 			/* enable better POSIX conformance */
@@ -435,7 +445,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	 * by the environment or the user. Also, we want tab completion
 	 * on in vi by default.
 	 */
-	change_flag(FEMACS, OF_SPECIAL, true);
+	change_flag(FEMACS, OF_INTERNAL, true);
 #if !MKSH_S_NOVI
 	Flag(FVITABCOMPLETE) = 1;
 #endif
@@ -529,7 +539,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	} else if (Flag(FCOMMAND)) {
 		s = pushs(SSTRINGCMDLINE, ATEMP);
 		if (!(s->start = s->str = argv[argi++]))
-			errorf(Tf_optdcs, 'c', Treq_arg);
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+			    KWF_TWOMSG | KWF_NOERRNO, Tdc, Treq_arg);
 		while (*s->str) {
 			if (ctype(*s->str, C_QUOTE))
 				break;
@@ -566,7 +577,7 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		    SHF_MAPHI | SHF_CLEXEC);
 		if (s->u.shf == NULL) {
 			shl_stdout_ok = false;
-			warningf(true, Tf_sD_s, s->file, cstrerror(errno));
+			kwarnf(KWF_PREFIX | KWF_FILELINE | KWF_ONEMSG, s->file);
 			/* mandated by SUSv4 */
 			exstat = 127;
 			unwind(LERROR);
@@ -652,12 +663,10 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	/* auto-detect from locale or environment */
 	case 4:
 #ifndef MKSH_EARLY_LOCALE_TRACKING
-#if HAVE_SETLOCALE_CTYPE
+#if HAVE_POSIX_UTF8_LOCALE
 		ccp = setlocale(LC_CTYPE, "");
-#if HAVE_LANGINFO_CODESET
 		if (!isuc(ccp))
 			ccp = nl_langinfo(CODESET);
-#endif
 		if (!isuc(ccp))
 			ccp = null;
 #endif
@@ -722,7 +731,8 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	 * user will know why things broke.
 	 */
 	if (!current_wd[0] && Flag(FTALKING))
-		warningf(false, "can't determine current directory");
+		kwarnf(KWF_PREFIX | KWF_ONEMSG | KWF_NOERRNO,
+		    "can't determine current directory");
 
 	if (Flag(FLOGIN))
 		include(MKSH_SYSTEM_PROFILE, 0, NULL, true);
@@ -842,7 +852,8 @@ include(const char *name, int argc, const char **argv, bool intr_ok)
 			unwind(i);
 			/* NOTREACHED */
 		default:
-			internal_errorf(Tunexpected_type, Tunwind, Tsource, i);
+			kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
+			    Tunexpected_type, Tunwind, Tsource, i);
 			/* NOTREACHED */
 		}
 	}
@@ -909,8 +920,8 @@ shell(Source * volatile s, volatile int level)
 			unwind(i);
 			/* NOTREACHED */
 		}
-		internal_errorf(Tf_cant_s, Tshell,
-		    i == LBREAK ? Tbreak : Tcontinue);
+		kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
+		    Tf_cant_s, Tshell, i == LBREAK ? Tbreak : Tcontinue);
 		/* NOTREACHED */
 	case LINTR:
 		/* we get here if SIGINT not caught or ignored */
@@ -954,7 +965,8 @@ shell(Source * volatile s, volatile int level)
 	default:
 		source = old_source;
 		quitenv(NULL);
-		internal_errorf(Tunexpected_type, Tunwind, Tshell, i);
+		kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
+		    Tunexpected_type, Tunwind, Tshell, i);
 		/* NOTREACHED */
 	}
 	while (/* CONSTCOND */ 1) {
@@ -1268,7 +1280,7 @@ tty_init_fd(void)
 		goto got_fd;
 	}
 #endif
-	if ((fd = open(T_devtty, O_RDWR, 0)) >= 0) {
+	if ((fd = open("/dev/tty", O_RDWR, 0)) >= 0) {
 		do_close = true;
 		goto got_fd;
 	}
@@ -1310,188 +1322,6 @@ tty_init_fd(void)
 	return (rv);
 }
 
-/* A shell error occurred (eg, syntax error, etc.) */
-
-#define VWARNINGF_ERRORPREFIX	1
-#define VWARNINGF_FILELINE	2
-#define VWARNINGF_BUILTIN	4
-#define VWARNINGF_INTERNAL	8
-
-static void vwarningf(unsigned int, const char *, va_list)
-    MKSH_A_FORMAT(__printf__, 2, 0);
-
-static void
-vwarningf(unsigned int flags, const char *fmt, va_list ap)
-{
-	if (fmt) {
-		if (flags & VWARNINGF_INTERNAL)
-			shf_fprintf(shl_out, Tf_sD_, "internal error");
-		if (flags & VWARNINGF_ERRORPREFIX)
-			error_prefix(tobool(flags & VWARNINGF_FILELINE));
-		if ((flags & VWARNINGF_BUILTIN) &&
-		    /* not set when main() calls parse_args() */
-		    builtin_argv0 && builtin_argv0 != kshname)
-			shf_fprintf(shl_out, Tf_sD_, builtin_argv0);
-		shf_vfprintf(shl_out, fmt, ap);
-		shf_putc('\n', shl_out);
-	}
-	shf_flush(shl_out);
-}
-
-void
-errorfx(int rc, const char *fmt, ...)
-{
-	va_list va;
-
-	exstat = rc;
-
-	/* debugging: note that stdout not valid */
-	shl_stdout_ok = false;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_ERRORPREFIX | VWARNINGF_FILELINE, fmt, va);
-	va_end(va);
-	unwind(LERROR);
-}
-
-void
-errorf(const char *fmt, ...)
-{
-	va_list va;
-
-	exstat = 1;
-
-	/* debugging: note that stdout not valid */
-	shl_stdout_ok = false;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_ERRORPREFIX | VWARNINGF_FILELINE, fmt, va);
-	va_end(va);
-	unwind(LERROR);
-}
-
-/* like errorf(), but no unwind is done */
-void
-warningf(bool fileline, const char *fmt, ...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_ERRORPREFIX | (fileline ? VWARNINGF_FILELINE : 0),
-	    fmt, va);
-	va_end(va);
-}
-
-/*
- * Used by built-in utilities to prefix shell and utility name to message
- * (also unwinds environments for special builtins).
- */
-void
-bi_errorf(const char *fmt, ...)
-{
-	va_list va;
-
-	/* debugging: note that stdout not valid */
-	shl_stdout_ok = false;
-
-	exstat = 1;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_ERRORPREFIX | VWARNINGF_FILELINE |
-	    VWARNINGF_BUILTIN, fmt, va);
-	va_end(va);
-
-	/* POSIX special builtins cause non-interactive shells to exit */
-	if (builtin_spec) {
-		builtin_argv0 = NULL;
-		/* may not want to use LERROR here */
-		unwind(LERROR);
-	}
-}
-
-/*
- * Used by functions called by builtins and not:
- * identical to errorfx if first argument is nil,
- * like bi_errorf storing the errorlevel into it otherwise
- */
-void
-maybe_errorf(int *ep, int rc, const char *fmt, ...)
-{
-	va_list va;
-
-	/* debugging: note that stdout not valid */
-	shl_stdout_ok = false;
-
-	exstat = rc;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_ERRORPREFIX | VWARNINGF_FILELINE |
-	    (ep ? VWARNINGF_BUILTIN : 0), fmt, va);
-	va_end(va);
-
-	if (!ep)
-		goto and_out;
-	*ep = rc;
-
-	/* POSIX special builtins cause non-interactive shells to exit */
-	if (builtin_spec) {
-		builtin_argv0 = NULL;
-		/* may not want to use LERROR here */
- and_out:
-		unwind(LERROR);
-	}
-}
-
-/* Called when something that shouldn't happen does */
-/* pre-initio() */
-void
-internal_errorf(const char *fmt, ...)
-{
-	va_list va;
-
-	if (!initio_done) {
-		/* from aresize() as alloc() */
-		SHIKATANAI write(2, SC("mksh: out of memory? early\n"));
-		exit(255);
-	}
-
-	exstat = 0xFF;
-	if (trap_exstat != -1)
-		trap_exstat = exstat;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_INTERNAL, fmt, va);
-	va_end(va);
-	unwind(LERROR);
-}
-
-void
-internal_warningf(const char *fmt, ...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	vwarningf(VWARNINGF_INTERNAL, fmt, va);
-	va_end(va);
-}
-
-/* used by error reporting functions to print "ksh: .kshrc[25]: " */
-void
-error_prefix(bool fileline)
-{
-	/* Avoid foo: foo[2]: ... */
-	if (!fileline || !source || !source->file ||
-	    strcmp(source->file, kshname) != 0)
-		shf_fprintf(shl_out, Tf_sD_, kshname +
-		    (*kshname == '-' ? 1 : 0));
-	if (fileline && source && source->file != NULL) {
-		shf_fprintf(shl_out, "%s[%lu]: ", source->file,
-		    (unsigned long)(source->errline ?
-		    source->errline : source->line));
-		source->errline = 0;
-	}
-}
-
 /* printf to shl_out (stderr) with flush */
 void
 shellf(const char *fmt, ...)
@@ -1511,7 +1341,8 @@ shprintf(const char *fmt, ...)
 	va_list va;
 
 	if (!shl_stdout_ok)
-		internal_errorf("shl_stdout not valid");
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG | KWF_NOERRNO,
+		    "shl_stdout not valid");
 	va_start(va, fmt);
 	shf_vfprintf(shl_stdout, fmt, va);
 	va_end(va);
@@ -1551,19 +1382,22 @@ initio(void)
 #ifdef DF
 	if ((lfp = getenv("SDMKSH_PATH")) == NULL) {
 		if ((lfp = getenv("HOME")) == NULL || !mksh_abspath(lfp))
-			errorf("can't get home directory");
+			kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG |
+			    KWF_NOERRNO, "can't get home directory");
 		strpathx(lfp, lfp, "mksh-dbg.txt", 1);
 	}
 
 	if ((shl_dbg_fd = open(lfp, O_WRONLY | O_APPEND | O_CREAT, 0600)) < 0)
-		errorf("can't open debug output file %s", lfp);
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_TWOMSG,
+		    lfp, "can't open debug output file");
 	if (shl_dbg_fd < FDBASE) {
 		int nfd;
 
-		nfd = fcntl(shl_dbg_fd, F_DUPFD, FDBASE);
+		if ((nfd = fcntl(shl_dbg_fd, F_DUPFD, FDBASE)) == -1)
+			kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG,
+			    "can't dup debug output file");
 		close(shl_dbg_fd);
-		if ((shl_dbg_fd = nfd) == -1)
-			errorf("can't dup debug output file");
+		shl_dbg_fd = nfd;
 	}
 	fcntl(shl_dbg_fd, F_SETFD, FD_CLOEXEC);
 	shf_fdopen(shl_dbg_fd, SHF_WR, shl_dbg);
@@ -1579,7 +1413,8 @@ ksh_dup2(int ofd, int nfd, bool errok)
 	int rv;
 
 	if (((rv = dup2(ofd, nfd)) < 0) && !errok && (errno != EBADF))
-		errorf(Ttoo_many_files, ofd, nfd, cstrerror(errno));
+		kerrf0(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE,
+		    Ttoo_many_files, ofd, nfd);
 
 #ifdef __ultrix
 	/*XXX imake style */
@@ -1604,10 +1439,11 @@ savefd(int fd)
 	    (errno == EBADF || errno == EPERM))
 		return (-1);
 	if (nfd < FDBASE || nfd > (int)(kui)FDMAXNUM)
-		errorf(Ttoo_many_files, fd, nfd, cstrerror(errno));
+		kerrf0(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE,
+		    Ttoo_many_files, fd, nfd);
 	if (fcntl(nfd, F_SETFD, FD_CLOEXEC) == -1)
-		internal_warningf(Tcloexec_failed, "set", nfd,
-		    cstrerror(errno));
+		kwarnf0(KWF_INTERNAL | KWF_WARNING, Tcloexec_failed,
+		    "set", nfd);
 	return (nfd);
 }
 
@@ -1632,7 +1468,8 @@ openpipe(int *pv)
 	int lpv[2];
 
 	if (pipe(lpv) < 0)
-		errorf("can't create pipe - try again");
+		kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE | KWF_ONEMSG,
+		    "pipe");
 	pv[0] = savefd(lpv[0]);
 	if (pv[0] != lpv[0])
 		close(lpv[0]);
@@ -1669,6 +1506,7 @@ check_fd(const char *name, int mode, const char **emsgp)
  illegal_fd_name:
 		if (emsgp)
 			*emsgp = "illegal file descriptor name";
+		errno = EINVAL;
 		return (-1);
 	}
 
@@ -1690,6 +1528,11 @@ check_fd(const char *name, int mode, const char **emsgp)
 			*emsgp = (fl == O_WRONLY) ?
 			    "fd not open for reading" :
 			    "fd not open for writing";
+#ifdef ENXIO
+		errno = ENXIO;
+#else
+		errno = EBADF;
+#endif
 		return (-1);
 	}
 	return (fd);
@@ -1754,6 +1597,7 @@ coproc_getfd(int mode, const char **emsgp)
 		return (fd);
 	if (emsgp)
 		*emsgp = "no coprocess";
+	errno = EBADF;
 	return (-1);
 }
 
@@ -1794,23 +1638,22 @@ maketemp(Area *ap, Temp_type type, struct temp **tlist)
 	dir = tmpdir ? tmpdir : MKSH_DEFAULT_TMPDIR;
 	/* add "/shXXXXXX.tmp" plus NUL */
 	len = strlen(dir);
-	checkoktoadd(len, offsetof(struct temp, tffn[0]) + 14);
-	tp = alloc(offsetof(struct temp, tffn[0]) + 14 + len, ap);
+	checkoktoadd(len, offsetof(struct temp, tffn[0]) + 14U);
+	cp = alloc(offsetof(struct temp, tffn[0]) + 14U + len, ap);
 
+	tp = (void *)cp;
 	tp->shf = NULL;
 	tp->pid = procpid;
 	tp->type = type;
 
-	if (stat(dir, &sb) || !S_ISDIR(sb.st_mode)) {
-		tp->tffn[0] = '\0';
-		goto maketemp_out;
-	}
-
-	cp = (void *)tp;
 	cp += offsetof(struct temp, tffn[0]);
 	memcpy(cp, dir, len);
 	cp += len;
 	memstr(cp, "/shXXXXXX.tmp");
+
+	if (stat(dir, &sb) || !S_ISDIR(sb.st_mode))
+		goto maketemp_out;
+
 	/* point to the first of six Xes */
 	cp += 3;
 
@@ -1869,7 +1712,8 @@ tgrow(struct table *tp)
 	struct tbl **ntblp, **otblp = tp->tbls;
 
 	if (tp->tshift > 29)
-		internal_errorf("hash table size limit reached");
+		kerrf(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_ONEMSG | KWF_NOERRNO,
+		    "hash table size limit reached");
 
 	/* calculate old size, new shift and new size */
 	osize = (size_t)1 << (tp->tshift++);
@@ -2101,7 +1945,7 @@ x_mkraw(int fd, mksh_ttyst *ocb, bool forread)
 }
 
 #ifdef MKSH_ENVDIR
-#if HAVE_SETLOCALE_CTYPE
+#if HAVE_POSIX_UTF8_LOCALE
 # error MKSH_ENVDIR has not been adapted to work with POSIX locale!
 #else
 static void
@@ -2115,8 +1959,8 @@ init_environ(void)
 	struct dirent *dent;
 
 	if ((dirp = opendir(MKSH_ENVDIR)) == NULL) {
-		warningf(false, "cannot read environment from %s: %s",
-		    MKSH_ENVDIR, cstrerror(errno));
+		kwarnf(KWF_PREFIX | KWF_TWOMSG, MKSH_ENVDIR,
+		    "can't read environment");
 		return;
 	}
 	XinitN(xs, 256, ATEMP);
@@ -2126,10 +1970,8 @@ init_environ(void)
 		if (skip_varname(dent->d_name, true)[0] == '\0') {
 			strpathx(xp, MKSH_ENVDIR, dent->d_name, 1);
 			if (!(shf = shf_open(xp, O_RDONLY, 0, 0))) {
-				warningf(false,
-				    "cannot read environment %s from %s: %s",
-				    dent->d_name, MKSH_ENVDIR,
-				    cstrerror(errno));
+				kwarnf(KWF_PREFIX | KWF_THREEMSG, MKSH_ENVDIR,
+				    dent->d_name, "can't read environment");
 				goto read_envfile;
 			}
 			afree(xp, ATEMP);
@@ -2145,10 +1987,9 @@ init_environ(void)
 					XcheckN(xs, xp, 128);
 			}
 			if (n < 0) {
-				warningf(false,
-				    "cannot read environment %s from %s: %s",
-				    dent->d_name, MKSH_ENVDIR,
-				    cstrerror(shf_errno(shf)));
+				kwarnf(KWF_VERRNO | KWF_PREFIX | KWF_THREEMSG,
+				    shf_errno(shf), MKSH_ENVDIR,
+				    dent->d_name, "can't read environment");
 			} else {
 				*xp = '\0';
 				xp = Xstring(xs, xp);
@@ -2159,8 +2000,8 @@ init_environ(void)
 		}
 		goto read_envfile;
 	} else if (errno)
-		warningf(false, "cannot read environment from %s: %s",
-		    MKSH_ENVDIR, cstrerror(errno));
+		kwarnf(KWF_PREFIX | KWF_TWOMSG, MKSH_ENVDIR,
+		    "can't read environment");
 	closedir(dirp);
 	Xfree(xs, xp);
 }
@@ -2181,8 +2022,8 @@ init_environ(void)
 		rndpush(*wp);
 		typeset(*wp, IMPORT | EXPORT, 0, 0, 0);
 #ifdef MKSH_EARLY_LOCALE_TRACKING
-		if (ord((*wp)[0]) == ORD('L') && (
-		    (ord((*wp)[1]) == ORD('C') && ord((*wp)[2]) == ORD('_')) ||
+		if (isch((*wp)[0], 'L') && (
+		    (isch((*wp)[1], 'C') && isch((*wp)[2], '_')) ||
 		    !strcmp(*wp, "LANG"))) {
 			const char **P;
 
@@ -2206,30 +2047,59 @@ void
 recheck_ctype(void)
 {
 	const char *ccp;
+#if !HAVE_POSIX_UTF8_LOCALE
+	const char *cdp;
+#endif
 
-	/*XXX OSX has LC_CTYPE=UTF-8 */
+	/* determine active LC_CTYPE value */
 	ccp = str_val(global("LC_ALL"));
-	if (ccp == null)
+	if (!*ccp)
 		ccp = str_val(global("LC_CTYPE"));
-	if (ccp == null)
+	if (!*ccp)
 		ccp = str_val(global("LANG"));
-#if !HAVE_SETLOCALE_CTYPE
-	/*XXX == null? this :- or - ? */
-	if (ccp == null)
+#if !HAVE_POSIX_UTF8_LOCALE
+	if (!*ccp)
 		ccp = MKSH_DEFAULT_LOCALE;
 #endif
-/*XXX check either the parameters directly or setlocale, not both */
-	UTFMODE = isuc(ccp);
-#if HAVE_SETLOCALE_CTYPE
-	ccp = setlocale(LC_CTYPE, ccp);
-#if HAVE_LANGINFO_CODESET
-/*XXX setlocale without nl_langinfo(CODESET) makes no sense for us */
-	if (!isuc(ccp))
-		ccp = nl_langinfo(CODESET);
+
+	/* determine codeset used */
+#if HAVE_POSIX_UTF8_LOCALE
+	errno = EINVAL;
+	if (!setlocale(LC_CTYPE, ccp)) {
+		kwarnf(KWF_PREFIX | KWF_FILELINE | KWF_ONEMSG, "setlocale");
+		return;
+	}
+	ccp = nl_langinfo(CODESET);
+#else
+	/* tacked on to a locale name or just a codeset? */
+	if ((cdp = cstrchr(ccp, '.')))
+		ccp = cdp + 1;
 #endif
-	if (isuc(ccp))
-		UTFMODE = 1;
+
+	/* see whether it’s UTF-8 */
+	UTFMODE = 0;
+	if (!isCh(ccp[0], 'U', 'u') ||
+	    !isCh(ccp[1], 'T', 't') ||
+	    !isCh(ccp[2], 'F', 'f'))
+		return;
+	ccp += isch(ccp[3], '-') ? 4 : 3;
+	if (!isch(*ccp, '8'))
+		return;
+	++ccp;
+	/* verify nothing untoward trails the string */
+#if !HAVE_POSIX_UTF8_LOCALE
+	if (cdp) {
+		/* tacked onto a locale name */
+		if (*ccp && !isch(*ccp, '@'))
+			return;
+	} else
+	  /* OSX has a "UTF-8" locale… */
 #endif
+	/* just a codeset so require EOS */
+	  if (*ccp != '\0')
+		return;
+	/* positively identified as UTF-8 */
+	UTFMODE = 1;
 }
 #endif
 

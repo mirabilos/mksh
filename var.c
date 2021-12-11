@@ -36,7 +36,7 @@
 #include <sys/ptem.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/var.c,v 1.254 2021/11/11 02:44:10 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/var.c,v 1.260 2021/11/16 01:10:15 tg Exp $");
 
 /*-
  * Variables
@@ -275,7 +275,8 @@ isglobal(const char *n, bool docreate)
 	c = (unsigned char)vn[0];
 	if (!ctype(c, C_ALPHX)) {
 		if (array)
-			errorf(Tbadsubst);
+			kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+			    KWF_ONEMSG | KWF_NOERRNO, Tbadsubst);
 		vp = vtemp;
 		vp->flag = DEFINED;
 		vp->type = 0;
@@ -474,9 +475,11 @@ setstr(struct tbl *vq, const char *s, int error_ok)
 
 	error_ok &= ~0x4;
 	if ((vq->flag & RDONLY) && !no_ro_check) {
-		warningf(true, Tf_ro, vq->name);
+		kwarnf((error_ok ? KWF_WARNING : KWF_ERR(2)) | KWF_PREFIX |
+		    KWF_FILELINE | KWF_TWOMSG | KWF_NOERRNO,
+		    Tread_only, vq->name);
 		if (!error_ok)
-			errorfxz(2);
+			unwind(LERROR);
 		return (0);
 	}
 	if (!(vq->flag&INTEGER)) {
@@ -488,7 +491,7 @@ setstr(struct tbl *vq, const char *s, int error_ok)
 #ifndef MKSH_SMALL
 			/* debugging */
 			if (s >= vq->val.s && s < (vq->val.s + cursz)) {
-				internal_errorf(
+				kerrf0(KWF_INTERNAL | KWF_ERR(0xFF) | KWF_NOERRNO,
 				    "setstr: %s=%s: assigning to self",
 				    vq->name, s);
 			}
@@ -544,8 +547,10 @@ getint(struct tbl *vp, mksh_ari_u *nump, bool arith)
 	if (vp->flag & SPECIAL)
 		getspec(vp);
 	/* XXX is it possible for ISSET to be set and val.s to be NULL? */
-	if (!(vp->flag & ISSET) || (!(vp->flag & INTEGER) && vp->val.s == NULL))
+	if (!(vp->flag & ISSET) || (!(vp->flag & INTEGER) && vp->val.s == NULL)) {
+		errno = EINVAL;
 		return (-1);
+	}
 	if (vp->flag & INTEGER) {
 		nump->i = vp->val.i;
 		return (vp->type);
@@ -574,7 +579,7 @@ getnum(const char *s, mksh_ari_u *nump, bool arith, bool psxoctal)
 	}
 
 	if (c == '0' && arith) {
-		if (ksh_eq(s[0], 'X', 'x')) {
+		if (isCh(s[0], 'X', 'x')) {
 			/* interpret as hexadecimal */
 			base = 16;
 			++s;
@@ -591,8 +596,10 @@ getnum(const char *s, mksh_ari_u *nump, bool arith, bool psxoctal)
 	do {
 		if (c == '#') {
 			/* ksh-style base determination */
-			if (have_base || num < 1)
+			if (have_base || num < 1) {
+				errno = EINVAL;
 				return (-1);
+			}
 			if ((base = num) == 1) {
 				/* mksh-specific extension */
 				unsigned int wc;
@@ -612,10 +619,14 @@ getnum(const char *s, mksh_ari_u *nump, bool arith, bool psxoctal)
 			c = ksh_numuc(c) + 10;
 		else if (ctype(c, C_LOWER))
 			c = ksh_numlc(c) + 10;
-		else
+		else {
+			errno = EINVAL;
 			return (-1);
-		if (c >= base)
+		}
+		if (c >= base) {
+			errno = EINVAL;
 			return (-1);
+		}
 		/* handle overflow as truncation */
 		num = num * base + c;
 	} while ((c = (unsigned char)*s++));
@@ -666,23 +677,26 @@ setint_n(struct tbl *vq, mksh_ari_t num, int newbase)
 static char *
 formatstr(struct tbl *vp, const char *s)
 {
-	int olen, nlen;
 	char *p, *q;
-	size_t psiz;
 
-	olen = (int)utf_mbswidth(s);
+	if (vp->flag & (RJUST | LJUST)) {
+		int slen, nlen;
+		size_t psiz;
 
-	if (vp->flag & (RJUST|LJUST)) {
+		psiz = utf_mbswidth(s);
+		if (psiz > (size_t)INT_MAX) {
+			errno = EOVERFLOW;
+			kerrf0(KWF_ERR(0xFF) | KWF_PREFIX | KWF_FILELINE,
+			    "string width %zu", psiz);
+		}
+		slen = (int)psiz;
 		if (!vp->u2.field)
 			/* default field width */
-			vp->u2.field = olen;
+			vp->u2.field = slen;
 		nlen = vp->u2.field;
-	} else
-		nlen = olen;
 
-	p = alloc((psiz = nlen * /* MB_LEN_MAX */ 3 + 1), ATEMP);
-	if (vp->flag & (RJUST|LJUST)) {
-		int slen = olen;
+		p = alloc2(nlen + 1, /* MB_LEN_MAX */ 4, ATEMP);
+		psiz = ((size_t)nlen + 1U) * 4U;
 
 		if (vp->flag & RJUST) {
 			const char *qq;
@@ -730,7 +744,7 @@ formatstr(struct tbl *vp, const char *s)
 				vp->u2.field, vp->u2.field, s);
 		}
 	} else
-		memcpy(p, s, strlen(s) + 1);
+		strdupx(p, s, ATEMP);
 
 	if (vp->flag & UCASEV_AL) {
 		for (q = p; *q; q++)
@@ -804,8 +818,9 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 	}
 	if (ord(*val) == ORD('[')) {
 		if (new_refflag != SRF_NOP)
-			not_errorf(NULL, (ep, 1, Tf_sD_s, var,
-			    "reference variable can't be an array"));
+			merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+			    KWF_FILELINE | KWF_TWOMSG | KWF_NOERRNO,
+			    var, "reference variable can't be an array"));
 		len = array_ref_len(val);
 		if (len < 3)
 			return (NULL);
@@ -863,7 +878,8 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 
 		/* bail out on 'nameref foo+=bar' */
 		if (vappend)
-			not_errorf(NULL, (ep, 1,
+			merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+			    KWF_FILELINE | KWF_ONEMSG | KWF_NOERRNO,
 			    "appending not allowed for nameref"));
 		/* find value if variable already exists */
 		if ((qval = val) == NULL) {
@@ -890,8 +906,9 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 				goto nameref_rhs_checked;
 			}
  nameref_empty:
-			not_errorf(NULL, (ep, 1, Tf_sD_s, var,
-			    "empty nameref target"));
+			merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+			    KWF_FILELINE | KWF_TWOMSG | KWF_NOERRNO,
+			    var, "empty nameref target"));
 		}
 		len = (ord(*ccp) == ORD('[')) ? array_ref_len(ccp) : 0;
 		if (ccp[len]) {
@@ -900,15 +917,17 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 			 * junk after it" and "invalid array"; in the
 			 * latter case, len is also 0 and points to '['
 			 */
-			not_errorf(NULL, (ep, 1, Tf_sD_s, qval,
-			    "nameref target not a valid parameter name"));
+			merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+			    KWF_FILELINE | KWF_TWOMSG | KWF_NOERRNO,
+			    qval, "nameref target not a valid parameter name"));
 		}
  nameref_rhs_checked:
 		/* prevent nameref loops */
 		while (qval) {
 			if (!strcmp(qval, tvar))
-				not_errorf(NULL, (ep, 1, Tf_sD_s, qval,
-				    "expression recurses on parameter"));
+				merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+				    KWF_FILELINE | KWF_TWOMSG | KWF_NOERRNO,
+				    qval, "expression recurses on parameter"));
 			varsearch(e->loc, &vp, qval, hash(qval));
 			qval = NULL;
 			if (vp && ((vp->flag & (ARRAY | ASSOC)) == ASSOC))
@@ -919,7 +938,8 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 	/* prevent typeset from creating a local PATH/ENV/SHELL */
 	if (Flag(FRESTRICTED) && (strcmp(tvar, TPATH) == 0 ||
 	    strcmp(tvar, TENV) == 0 || strcmp(tvar, TSHELL) == 0))
-		not_errorf(NULL, (ep, 1, Tf_sD_s, tvar, "restricted"));
+		merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+		    KWF_TWOMSG | KWF_NOERRNO, tvar, "restricted"));
 
 	innermost_refflag = new_refflag;
 	vp = (set & LOCAL) ? local(tvar, tobool(set & LOCAL_COPY)) :
@@ -953,13 +973,14 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 	vpbase = (vp->flag & ARRAY) ? arraybase(tvar) : vp;
 
 	/*
-	 * only allow export and readonly flag to be set; AT&T ksh
+	 * only allow export and read-only flag to be set; AT&T ksh
 	 * allows any attribute to be changed which means it can be
 	 * truncated or modified (-L/-R/-Z/-i)
 	 */
 	if ((vpbase->flag & RDONLY) &&
 	    (val || clr || (set & ~(EXPORT | RDONLY))))
-		not_errorf(NULL, (ep, 2, Tf_ro, tvar));
+		merrf(NULL, (ep, KWF_ERR(2) | KWF_PREFIX | KWF_FILELINE |
+		    KWF_TWOMSG | KWF_NOERRNO, Tread_only, tvar));
 	if (tvar != tvarbuf)
 		afree(tvar, ATEMP);
 
@@ -1040,7 +1061,9 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 			}
 		}
 		if (!ok)
-			not_errorf(NULL, (ep, 1, NULL));
+			merrf(NULL, (ep, KWF_ERR(1) | KWF_PREFIX |
+			    KWF_FILELINE | KWF_ONEMSG | KWF_NOERRNO,
+			    "failed to set string value"));
 	}
 
 	if (vappend) {
@@ -1065,7 +1088,7 @@ vtypeset(int *ep, const char *var, uint32_t set, uint32_t clr,
 			if (base > 0)
 				vp->type = base;
 		} else {
-			/* setstr can't fail (readonly check already done) */
+			/* setstr can't fail (read-only check already done) */
 			setstr(vp, val, KSH_RETURN_ERROR | 0x4);
 			vp->flag |= (set & IMPORT);
 		}
@@ -1333,9 +1356,13 @@ getspec(struct tbl *vp)
 
 		vp->flag &= ~SPECIAL;
 		mksh_TIME(tv);
-		shf_snprintf(buf, sizeof(buf), "%u.%06u",
-		    (unsigned)tv.tv_sec, (unsigned)tv.tv_usec);
-		setstr(vp, buf, KSH_RETURN_ERROR | 0x4);
+		if (vp->flag & INTEGER)
+			setint(vp, (mksh_ari_t)tv.tv_sec);
+		else {
+			shf_snprintf(buf, sizeof(buf), "%u.%06u",
+			    (unsigned)tv.tv_sec, (unsigned)tv.tv_usec);
+			setstr(vp, buf, KSH_RETURN_ERROR | 0x4);
+		}
 		vp->flag |= SPECIAL;
 		return;
 	}
@@ -1458,7 +1485,9 @@ setspec(struct tbl *vp)
 		if (getint(vp, &num, false) == -1) {
 			s = str_val(vp);
 			if (st != V_RANDOM)
-				errorf(Tf_sD_sD_s, vp->name, Tbadnum, s);
+				kerrf(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE |
+				    KWF_THREEMSG | KWF_NOERRNO,
+				    vp->name, Tbadnum, s);
 			num.u = hash(s);
 		}
 		vp->flag |= SPECIAL;
@@ -1697,7 +1726,8 @@ set_array(const char *var, bool reset, const char **vals)
 
 	/* Note: AT&T ksh allows set -A but not set +A of a read-only var */
 	if ((vp->flag&RDONLY))
-		errorfx(2, Tf_ro, ccp);
+		kerrf(KWF_ERR(2) | KWF_PREFIX | KWF_FILELINE | KWF_TWOMSG |
+		    KWF_NOERRNO, Tread_only, ccp);
 	/* This code is quite non-optimal */
 	if (reset) {
 		/* trash existing values and attributes */
@@ -2043,12 +2073,13 @@ c_typeset(const char **wp)
 	}
 
 	if (fieldstr && !getn(fieldstr, &field)) {
-		bi_errorf(Tf_sD_s, Tbadnum, fieldstr);
+		kwarnf(KWF_BIERR | KWF_TWOMSG, Tbadnum, fieldstr);
 		return (1);
 	}
 	if (basestr) {
 		if (!getn(basestr, &base)) {
-			bi_errorf(Tf_sD_s, "bad integer base", basestr);
+			kwarnf(KWF_BIERR | KWF_TWOMSG,
+			    "bad integer base", basestr);
 			return (1);
 		}
 		if (base < 1 || base > 36)
@@ -2065,7 +2096,8 @@ c_typeset(const char **wp)
 
 	if (func && (((fset|fclr) & ~(TRACE|UCASEV_AL|EXPORT)) ||
 	    new_refflag != SRF_NOP)) {
-		bi_errorf("only -t, -u and -x options may be used with -f");
+		kwarnf(KWF_BIERR | KWF_ONEMSG | KWF_NOERRNO,
+		    "only -t, -u and -x options may be used with -f");
 		return (1);
 	}
 	if (wp[builtin_opt.optind]) {
@@ -2134,7 +2166,8 @@ c_typeset(const char **wp)
 			    field, base)) {
 				if (x)
 					return (x);
-				bi_errorf(Tf_sD_s, wp[i], Tnot_ident);
+				kwarnf(KWF_BIERR | KWF_TWOMSG | KWF_NOERRNO,
+				    wp[i], Tnot_ident);
 				return (1);
 			}
 		}
@@ -2274,7 +2307,7 @@ c_typeset_vardump(struct tbl *vp, uint32_t flag, int thing, int any_set,
 		}
 		shf_puts(vp->name, shl_stdout);
 		if (any_set)
-			shprintf("[%lu]", arrayindex(vp));
+			shprintf(Tf_SQlu, arrayindex(vp));
 		if ((!thing && !flag && pflag) ||
 		    (thing == '-' && (vp->flag & ISSET))) {
 			shf_putc('=', shl_stdout);
