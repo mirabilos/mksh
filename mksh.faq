@@ -1,4 +1,4 @@
-RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.28 2021/10/03 23:38:13 tg Exp $
+RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.32 2022/01/25 06:07:32 tg Exp $
 ToC: spelling
 Title: How do you spell <tt>mksh</tt>? How do you pronounce it?
 
@@ -474,7 +474,7 @@ Title: How POSIX compliant is mksh? Also, UTF-8 vs. locales?
  the PUA; however, there is ambiguity if encountering those UTF-8-encoded, so
  it changed for R60.) The <tt>Arithmetic expressions</tt> and <tt>CAVEATS</tt>
  sections in mksh(1) contain more details about encoding and mapping.</p>
-<p>As of R60, <tt>utf8-mode</tt> maps “raw octets” to U-00200080‥U-002000FF,
+<p>As of R60, <tt>utf8-mode</tt> maps “raw octets” to U-10000080‥U-100000FF,
  which is outside the UCS and therefore collision-free. There’s work underway
  to make the shell support the full 21-bit UCS range for R60.</p>
 <p class="boxhead">The following POSIX sh-compatible code toggles the
@@ -484,7 +484,7 @@ Title: How POSIX compliant is mksh? Also, UTF-8 vs. locales?
 <div class="boxtext">
  <pre>
 	case ${KSH_VERSION:-} in
-	*MIRBSD KSH*|*LEGACY KSH*)
+	*MIRBSD\ KSH*|*LEGACY\ KSH*)
 		case ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} in
 		*[Uu][Tt][Ff]8*|*[Uu][Tt][Ff]-8*) set -U ;;
 		*) set +U ;;
@@ -541,6 +541,38 @@ Title: I get an error in this regex comparison
  … becomes…<br />
  <tt>[[ foo = *@(foo|bar)*baz* ]]</tt></p>
 ----
+ToC: local-arrays
+Title: How can I do local arrays?
+
+<p class="boxhead">mksh supports function-local arrays with an “onion
+ model” in which you can basically create (and unset) a local variable
+ in a function, which may of course be array-typed:</p>
+<div class="boxtext">
+ <pre>
+	function foo {
+		a[1]=x		# modifies the outer array
+		echo ${a[*]}
+		local a		# makes a local variable…
+		set -A a	# … of type array…
+		a[0]=yz		# modifies the inner array
+		echo ${a[*]}
+		unset a		# removes the local variable
+		echo ${a[*]}
+		a[2]=!		# modifies the unveiled outer again
+		echo ${a[*]}
+	}
+	set -A a -- 1 2 3 4 5
+	echo ${a[*]}		# shows the outer array before…
+	foo
+	echo ${a[*]}		# …and after the function ran
+ </pre>
+</div><p class="boxfoot">This also works with <tt>a=(…)</tt> and
+ in POSIX-style functions <tt>foo() { …; }</tt> (in mksh, although
+ not in AT&amp;T ksh which uses a different scope model) and with
+ appending <tt>a+=(…)</tt> (and <tt>set -A a+ -- …</tt>), and even
+ no-truncation array assignments <tt>set +A a -- …</tt> behave in
+ a consistent manner.</p>
+----
 ToC: trim-vector
 Title: ${@?}: bad substitution
 
@@ -553,9 +585,9 @@ Title: ${@?}: bad substitution
 ToC: extensions-to-avoid
 Title: Are there any extensions to avoid?
 
-<p>GNU <tt>bash</tt> supports “<tt>&amp;&gt;</tt>” (and “|&amp;”) to redirect
- both stdout and stderr in one go, but this breaks POSIX and Korn Shell syntax;
- use POSIX redirections instead:</p>
+<p>GNU <tt>bash</tt> supports “<tt>&amp;&gt;</tt>” (and “<tt>|&amp;</tt>”)
+ to redirect both stdout and stderr in one go, but this breaks POSIX
+ and Korn Shell syntax; use POSIX redirections instead:</p>
 <table border="1" cellpadding="3">
  <tr><td>GNU bash</td><td>
   <tt>foo |&amp; bar |&amp; baz &amp;&gt;log</tt>
