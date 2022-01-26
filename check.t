@@ -1,4 +1,4 @@
-# $MirOS: src/bin/mksh/check.t,v 1.886 2021/11/21 04:14:56 tg Exp $
+# $MirOS: src/bin/mksh/check.t,v 1.889 2022/01/25 06:24:45 tg Exp $
 # -*- mode: sh -*-
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -31,7 +31,7 @@
 # (2013/12/02 20:39:44) http://cvsweb.openbsd.org/cgi-bin/cvsweb/src/regress/bin/ksh/?sortby=date
 
 expected-stdout:
-	KSH R59 2021/11/20
+	KSH R59 2022/01/06
 description:
 	Check base version of full shell
 stdin:
@@ -9304,6 +9304,7 @@ expected-stdout:
 name: arrays-3
 description:
 	Check if array bounds are uint32_t
+	XXX changing to arithmetic type later
 stdin:
 	set -A foo a b c
 	foo[4097]=d
@@ -13120,22 +13121,26 @@ stdin:
 	echo =14
 	(mypid=$$; try mypid)
 	echo =15
-	) 2>&1 | sed -e 's/^[A-Za-z]://' -e 's/^[^]]*]//' -e 's/^[^:]*: *//'
+	) 2>&1 | sed \
+	    -e "s^${__progname%.exe}\.*e*x*e*: <stdin>\[[0-9]*]PROGl" \
+	    -e "s^[EW]: ${__progname%.exe}\.*e*x*e*: <stdin>\[[0-9]*]PROGl" \
+	    -e "s^${__progname%.exe}\.*e*x*e*: PROGn: " \
+	    -e "s^[EW]: ${__progname%.exe}\.*e*x*e*: PROGn: "
 	exit ${PIPESTATUS[0]}
 expected-stdout:
 	y
 	=1
-	y: parameter not set
+	PROGl: y: parameter not set
 	=2
 	x=nz
 	=3
-	y: parameter not set
+	PROGn: y: parameter not set
 	=4
 	0=nz
 	=5
-	2: parameter not set
+	PROGn: 2: parameter not set
 	=6
-	1: parameter not set
+	PROGl: 1: parameter not set
 	=7
 	at=
 	=8
@@ -13143,7 +13148,7 @@ expected-stdout:
 	=9
 	0
 	=10
-	!: parameter not set
+	PROGl: !: parameter not set
 	=11
 	ush
 	=12
@@ -14057,7 +14062,7 @@ stdin:
 		[[ -o utf8-mode ]]; local u=$?
 		set +U
 		local c s="$*" t=
-		[[ -n $s ]] || { s=$(cat;print x); s=${s%x}; }
+		[[ -n $s ]] || { s=$(cat;print .); s=${s%.}; }
 		local -i i=0 n=${#s} p=0 v x
 		local -i16 o
 	
