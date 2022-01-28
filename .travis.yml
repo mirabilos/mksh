@@ -1,5 +1,5 @@
 {
-  "before_script": "set -ex && rm -rf build* && mkdir build-mksh build-lksh && cp GNUmakefile build-mksh && cp GNUmakefile build-lksh && (cd build-mksh && sh ../Build.sh -M) && (cd build-lksh && bash ../Build.sh -L -M)",
+  "before_script": "CFLAGS=\"$CFLAGS -O2 -Wall -Wextra -Wformat -Wformat-security\"; export CFLAGS; set -ex && rm -rf build* && mkdir build-mksh build-lksh && cp GNUmakefile build-mksh && cp GNUmakefile build-lksh && (cd build-mksh && sh ../Build.sh -M) && (cd build-lksh && bash ../Build.sh -L -M)",
   "jobs": {
     "include": [
       {
