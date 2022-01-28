@@ -36,7 +36,7 @@
 #include <sys/ptem.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/var.c,v 1.261 2022/01/06 22:35:04 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/var.c,v 1.264 2022/01/28 10:28:22 tg Exp $");
 
 /*-
  * Variables
@@ -73,7 +73,7 @@ static void setspec(struct tbl *);
 static void unsetspec(struct tbl *, bool);
 static int getint(struct tbl *, mksh_ari_u *, bool);
 static int getnum(const char *, mksh_ari_u *, bool, bool);
-static const char *array_index_calc(const char *, bool *, kul_ari *);
+static const char *array_index_calc(const char *, bool *, k32 *);
 static struct tbl *vtypeset(int *, const char *, kui, kui, int, int);
 
 /*
@@ -188,12 +188,12 @@ varsearch(struct block *l, struct tbl **vpp, const char *vn, k32 h)
 
 /*
  * Used to calculate an array index for global()/local(). Sets *arrayp
- * to true if this is an array, sets *valp to the array index, returns
+ * to true if this is an array, sets *idxp to the array index, returns
  * the basename of the array. May only be called from global()/local()
  * and must be their first callee.
  */
 static const char *
-array_index_calc(const char *n, bool *arrayp, kul_ari *valp)
+array_index_calc(const char *n, bool *arrayp, k32 *idxp)
 {
 	const char *p;
 	size_t len;
@@ -239,8 +239,7 @@ array_index_calc(const char *n, bool *arrayp, kul_ari *valp)
 		tmp[len] = '\0';
 		sub = substitute(tmp, 0);
 		evaluate(sub, &rval.i, KSH_UNWIND_ERROR, true);
-		/*XXX kul with mode-dependent mask */
-		*valp = rval.u;
+		*idxp = K32(rval.u);
 		afree(sub, ATEMP);
 		memcpy(tmp, n, tmplen);
 		tmp[tmplen] = '\0';
@@ -269,13 +268,13 @@ isglobal(const char *n, bool docreate)
 	int c;
 	bool array;
 	k32 h;
-	kul_ari val;
+	k32 idx;
 
 	/*
 	 * check to see if this is an array;
 	 * dereference namerefs; must come first
 	 */
-	vn = array_index_calc(n, &array, &val);
+	vn = array_index_calc(n, &array, &idx);
 	h = hash(vn);
 	c = (unsigned char)vn[0];
 	if (!ctype(c, C_ALPHX)) {
@@ -337,7 +336,7 @@ isglobal(const char *n, bool docreate)
 		docreate = false;
 	if (vp != NULL) {
 		if (array)
-			vp = arraysearch(vp, val);
+			vp = arraysearch(vp, idx);
 		if (docreate) {
 			vp->flag |= DEFINED;
 			if (special(vn))
@@ -362,13 +361,13 @@ local(const char *n, bool copy)
 	struct block *l = e->loc;
 	bool array;
 	k32 h;
-	kul_ari val;
+	k32 idx;
 
 	/*
 	 * check to see if this is an array;
 	 * dereference namerefs; must come first
 	 */
-	vn = array_index_calc(n, &array, &val);
+	vn = array_index_calc(n, &array, &idx);
 	h = hash(vn);
 	if (!ctype(*vn, C_ALPHX)) {
 		vp = vtemp;
@@ -392,7 +391,7 @@ local(const char *n, bool copy)
 		}
 	}
 	if (array)
-		vp = arraysearch(vp, val);
+		vp = arraysearch(vp, idx);
 	vp->flag |= DEFINED;
 	if (special(vn))
 		vp->flag |= SPECIAL;
@@ -1625,22 +1624,22 @@ unsetspec(struct tbl *vp, bool dounset)
  * vp, indexed by val.
  */
 struct tbl *
-arraysearch(struct tbl *vp, kul_ari val)
+arraysearch(struct tbl *vp, k32 idx)
 {
 	struct tbl *prev, *curr, *news;
 	size_t len;
 
 	vp->flag = (vp->flag | (ARRAY | DEFINED)) & ~ASSOC;
 	/* the table entry is always [0] */
-	if (val == 0)
+	if (idx == 0)
 		return (vp);
 	prev = vp;
 	curr = vp->u.array;
-	while (curr && curr->ua.index < val) {
+	while (curr && curr->ua.index < idx) {
 		prev = curr;
 		curr = curr->u.array;
 	}
-	if (curr && curr->ua.index == val) {
+	if (curr && curr->ua.index == idx) {
 		if (curr->flag&ISSET)
 			return (curr);
 		news = curr;
@@ -1656,7 +1655,7 @@ arraysearch(struct tbl *vp, kul_ari val)
 	news->type = vp->type;
 	news->areap = vp->areap;
 	news->u2.field = vp->u2.field;
-	news->ua.index = val;
+	news->ua.index = idx;
 
 	if (curr != news) {
 		/* not reusing old array entry */
@@ -1784,7 +1783,7 @@ set_array(const char *var, bool reset, const char **vals)
 		}
 #endif
 
-		vq = arraysearch(vp, j);
+		vq = arraysearch(vp, K32(j));
 		/* would be nice to deal with errors here... (see above) */
 		setstr(vq, ccp, KSH_RETURN_ERROR);
 		i++;
@@ -1842,8 +1841,8 @@ hash(const void *s)
 	register k32 h;
 
 	BAFHInit(h);
-	BAFHUpdateStr_reg(h, s);
-	BAFHFinish_reg(h);
+	BAFHUpdateStr(h, s);
+	BAFHFinish(h);
 	return (h);
 }
 
@@ -1855,13 +1854,13 @@ chvt_rndsetup(const void *bp, size_t sz)
 	/* use LCG as seed but try to get them to deviate immediately */
 	h = lcg_state;
 	(void)rndget();
-	BAFHFinish_reg(h);
+	BAFHFinish(h);
 	/* variation through pid, ppid, and the works */
-	BAFHUpdateMem_reg(h, &rndsetupstate, sizeof(rndsetupstate));
+	BAFHUpdateMem(h, &rndsetupstate, sizeof(rndsetupstate));
 	/* some variation, some possibly entropy, depending on OE */
-	BAFHUpdateMem_reg(h, bp, sz);
+	BAFHUpdateMem(h, bp, sz);
 	/* mix them all up */
-	BAFHFinish_reg(h);
+	BAFHFinish(h);
 
 	return (h);
 }
@@ -1899,8 +1898,8 @@ rndset(unsigned long v)
 	memset(&z, 0, sizeof(z));
 
 	h = lcg_state;
-	BAFHFinish_reg(h);
-	BAFHUpdateMem_reg(h, &v, sizeof(v));
+	BAFHFinish(h);
+	BAFHUpdateMem(h, &v, sizeof(v));
 
 	mksh_TIME(z.tv);
 	z.sp = &z;
@@ -1916,8 +1915,8 @@ rndset(unsigned long v)
 	 * user requested us to use the old functions
 	 */
 	t = h;
-	BAFHUpdateMem_reg(t, &lcg_state, sizeof(lcg_state));
-	BAFHFinish_reg(t);
+	BAFHUpdateMem(t, &lcg_state, sizeof(lcg_state));
+	BAFHFinish(t);
 	lcg_state = t;
 #if defined(arc4random_pushb_fast)
 	arc4random_pushb_fast(&lcg_state, sizeof(lcg_state));
@@ -1925,13 +1924,13 @@ rndset(unsigned long v)
 #else
 	lcg_state = arc4random_pushb(&lcg_state, sizeof(lcg_state));
 #endif
-	BAFHUpdateMem_reg(h, &lcg_state, sizeof(lcg_state));
+	BAFHUpdateMem(h, &lcg_state, sizeof(lcg_state));
 #else
 	z.qh = qh_state;
 #endif
 
-	BAFHUpdateMem_reg(h, &z, sizeof(z));
-	BAFHFinish_reg(h);
+	BAFHUpdateMem(h, &z, sizeof(z));
+	BAFHFinish(h);
 	lcg_state = h;
 }
 
@@ -1940,8 +1939,8 @@ rndpush(const void *s, size_t n)
 {
 	register k32 h = qh_state;
 
-	BAFHUpdateMem_reg(h, s, n);
-	BAFHFinish_reg(h);
+	BAFHUpdateMem(h, s, n);
+	BAFHFinish(h);
 	qh_state = h;
 }
 

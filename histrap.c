@@ -29,7 +29,7 @@
 #include <sys/file.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/histrap.c,v 1.182 2022/01/06 22:34:57 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/histrap.c,v 1.185 2022/01/28 03:54:35 tg Exp $");
 
 Trap sigtraps[ksh_NSIG + 1];
 
@@ -1038,7 +1038,7 @@ hist_finish(void)
 
 /* +++ signals +++ */
 
-#if !HAVE_SYS_SIGNAME
+#if !HAVE_SIGABBREV_NP && !HAVE_SYS_SIGNAME
 static const struct mksh_sigpair {
 	const char * const name;
 	int nr;
@@ -1053,7 +1053,7 @@ inittraps(void)
 {
 	int i;
 	const char *cs;
-#if !HAVE_SYS_SIGNAME
+#if !HAVE_SIGABBREV_NP && !HAVE_SYS_SIGNAME
 	const struct mksh_sigpair *pair;
 #endif
 
@@ -1062,7 +1062,9 @@ inittraps(void)
 	/* populate sigtraps based on sys_signame and sys_siglist */
 	for (i = 1; i < ksh_NSIG; i++) {
 		sigtraps[i].signal = i;
-#if HAVE_SYS_SIGNAME
+#if HAVE_SIGABBREV_NP
+		cs = sigabbrev_np(i);
+#elif HAVE_SYS_SIGNAME
 		cs = sys_signame[i];
 #else
 		pair = mksh_sigpairs;
@@ -1228,10 +1230,10 @@ traphash(int signo, int extra)
 	z.j = extra;
 
 	o = h = state;
-	BAFHUpdateMem_reg(h, &z, sizeof(z));
+	BAFHUpdateMem(h, &z, sizeof(z));
 	while (state != o) {
 		o = state;
-		BAFHUpdateMem_reg(h, &o, sizeof(o));
+		BAFHUpdateMem(h, &o, sizeof(o));
 	}
 	state = h;
 	return (h);
