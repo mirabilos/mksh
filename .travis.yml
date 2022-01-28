@@ -2,8 +2,8 @@
   "addons": {
     "coverity_scan": {
       "branch_pattern": "coverity_scan",
-      "build_command": "make -f GNUmakefile -j4 all",
-      "build_command_prepend": "rm -f *.o Makefrag.inc Rebuild.sh conftest.c mksh *.gen signames.inc test.sh && sh Build.sh -M -g",
+      "build_command": "set +e; unset -f cd; set -ex && for x in build-mksh build-lksh; do (cd $x && make -f GNUmakefile -j2 all); done",
+      "build_command_prepend": "set +e; unset -f cd; set -ex && rm -rf build* && mkdir build-mksh build-lksh && cp GNUmakefile build-mksh && cp GNUmakefile build-lksh && (cd build-mksh && sh ../Build.sh -M -g) && (cd build-lksh && bash ../Build.sh -L -M -g)",
       "notification_email": "tg@mirbsd.de",
       "project": {
         "description": "mksh Coverity/Travis",
@@ -23,5 +23,5 @@
     ]
   },
   "language": "c",
-  "script": true
+  "script": "true"
 }
