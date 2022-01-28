@@ -30,6 +30,8 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.978 2022/01/28 10:28:20 tg Exp $"
+
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
 #include "autoconf.h"
@@ -121,6 +123,7 @@
 #ifdef MIRBSD_BOOTFLOPPY
 #include <wchar.h>
 #endif
+#include "mbsdint.h"
 
 /* monkey-patch known-bad offsetof versions to quell a warning */
 #if (defined(__KLIBC__) || defined(__dietlibc__)) && \
@@ -199,20 +202,7 @@
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#ifdef EXTERN
-__RCSID("$MirOS: src/bin/mksh/sh.h,v 1.972 2022/01/06 22:35:02 tg Exp $");
-#endif
-#define MKSH_VERSION "R59 2022/01/06"
-
-/* arithmetic types: C implementation */
-#if !HAVE_CAN_INTTYPES
-#if !HAVE_CAN_UCBINTS
-typedef signed int int32_t;
-typedef unsigned int uint32_t;
-#else
-typedef u_int32_t uint32_t;
-#endif
-#endif
+#define MKSH_VERSION "R59 2022/01/27"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -230,47 +220,16 @@ typedef signed long ksl;		/* signed long, arithmetic */
 
 /* arithmetic types: shell arithmetics */
 
-/* ensure v is a positive (2ⁿ-1) number (n>0) */
-#define ICHKBITS(v) ((v) > 0 ? ICHKBIT0(v) : 0)
-#define ICHKBIT0(v) ICHKBITM(v, 0xFF, ICHKBIT1((v) >> 8), ICHKBITL(v))
-#define ICHKBIT1(v) ICHKBITM(v, 0xFF, ICHKBIT2((v) >> 8), ICHKBITL(v))
-#define ICHKBIT2(v) ICHKBITM(v, 0xFF, ICHKBIT3((v) >> 8), ICHKBITL(v))
-#define ICHKBIT3(v) ICHKBITM(v, 0xFF, ICHKBIT4((v) >> 8), ICHKBITL(v))
-#define ICHKBIT4(v) ICHKBITM(v, 0xFF, ICHKBIT5((v) >> 8), ICHKBITL(v))
-#define ICHKBIT5(v) ICHKBITM(v, 0xFF, ICHKBIT6((v) >> 8), ICHKBITL(v))
-#define ICHKBIT6(v) ICHKBITM(v, 0xFF, ICHKBIT7((v) >> 8), ICHKBITL(v))
-#define ICHKBIT7(v) ICHKBITM(v, 0xFF, ICHKBIT8((v) >> 8), ICHKBITL(v))
-#define ICHKBIT8(v) ICHKBITM(v, 0xFF, ICHKBITN(v), ICHKBITL(v))
-#define ICHKBITL(v) (ICHKBITN(v) && ICHKBITM(v, 0x0F, ICHKBITH((v) >> 4), ICHKBITH(v)))
-#define ICHKBITH(v) (!(v) || (v) == 1 || (v) == 3 || (v) == 7 || (v) == 0x0F)
-#define ICHKBITM(v,m,t,f) ((((v) & m) == m) ? t : f)
-#define ICHKBITN(v) (!((v) >> 8))
-
-/* counts the value bits when given inttype_MAX as argument */
-#define IMAX_BITS(m) ((unsigned int)((m) / ((m) % 255 + 1) / 255 % 255 * 8 + \
-	    7 - 86 / ((m) % 255 + 12)))
-/* calculation by Hallvard B Furuseth from comp.lang.c */
-#define UMAX_TYPE(t) ((t)~(t)0)
-#define UMAX_BITS(t) IMAX_BITS(UMAX_TYPE(t))
-
 /* “cast” between unsigned / signed long */
-#define KUL2SL(ul)	(((ul) > (kul)(LONG_MAX)) ? \
-			    (ksl)(-(ksl)(~(ul)) - 1L) : \
-			    (ksl)(ul))
-#define KSL2UL(sl)	(((sl) < 0) ? \
-			    (kul)(~(kul)(-((sl) + 1L))) : \
-			    (kul)(sl))
+#define KUL2SL(ul)	mbiA_U2S(kul, ksl, LONG_MAX, ul)
+#define KSL2UL(sl)	mbiA_S2U(kul, ksl, sl)
 
 /* convert between signed and sign variable plus magnitude */
-#define KNEGUL2SL(n,ul)	(((n) && (ul) > 0) ? \
-			    (ksl)(-(ksl)((ul) - 1UL) - 1L) : \
-			    (ksl)(ul))
-/* n = sl < 0; */
-#define KSL2NEGUL(sl)	(((sl) < 0) ? \
-			    ((kul)(-((sl) + 1L)) + 1UL) : \
-			    (kul)(sl))
+#define KNEGUL2SL(n,ul)	mbiA_VZM2S(kul, ksl, n, ul)
+/* n = sl < 0; //mbiA_S2VZ(sl); */
+#define KSL2NEGUL(sl)	mbiA_S2M(kul, ksl, sl)
 
-/* new arithmetics tbd, commitid 1006100D6F11B839C0E etc */
+/* new arithmetics tbd, using mbiMA_* */
 
 /* older arithmetics, to be replaced later */
 #ifdef MKSH_LEGACY_MODE
@@ -285,17 +244,20 @@ typedef unsigned long mksh_uari_t;
  * integer wraparound, even across division and modulo, for
  * any shell code using them, is guaranteed.
  */
+#if HAVE_CAN_INTTYPES
 typedef int32_t mksh_ari_t;
 typedef uint32_t mksh_uari_t;
+#else
+/* relies on compile-time asserts and CFLAGS to validate that */
+typedef signed int mksh_ari_t;
+typedef unsigned int mksh_uari_t;
+#define INT32_MIN INT_MIN
+#define INT32_MAX INT_MAX
+#define UINT32_MAX UINT_MAX
+#endif
 #endif
 
 /* new arithmetics in preparation */
-
-/*
- * mksh_uari_t for now, already checked to be replaced
- * later by kul with POSIX mode-dependent masking
- */
-typedef mksh_uari_t kul_ari;
 
 /* boolean type (no <stdbool.h> deliberately) */
 typedef unsigned char mksh_bool;
@@ -341,10 +303,6 @@ typedef MKSH_TYPEDEF_SSIZE_T ssize_t;
 #undef BAD		/* AIX defines that somewhere */
 #undef PRINT		/* LynxOS defines that somewhere */
 #undef flock		/* SCO UnixWare defines that to flock64 but ENOENT */
-
-/* compile-time assertions */
-/* use between struct ctasserts_file_basename { and }; */
-#define cta(name,expr)	char name[(expr) ? 1 : -1]
 
 /* compiler shenanigans… */
 #ifdef _FORTIFY_SOURCE
@@ -434,11 +392,7 @@ extern int ksh_getrusage(int, struct rusage *);
 #endif
 
 #ifndef SIZE_MAX
-#ifdef SIZE_T_MAX
-#define SIZE_MAX	SIZE_T_MAX
-#else
 #define SIZE_MAX	((size_t)-1)
-#endif
 #endif
 
 #ifndef PTRDIFF_MAX
@@ -537,7 +491,9 @@ typedef sig_t ksh_sigsaved;
 #define ksh_sigrestore(s,svp) ksh_sigset((s), *(svp), NULL)
 #endif
 
-#if HAVE_SYS_SIGLIST
+#if HAVE_SIGDESCR_NP
+#define ksh_sigmess(nr) sigdescr_np(nr)
+#elif HAVE_SYS_SIGLIST
 #if !HAVE_SYS_SIGLIST_DECL
 extern const char * const sys_siglist[];
 #endif
@@ -1907,7 +1863,7 @@ struct tbl {
 	} u;
 	union {
 		k32 hval;		/* hash(name) */
-		kul_ari index;		/* index for an array */
+		k32 index;		/* index for an array */
 	} ua;
 	union {
 		int field;		/* field with for -L/-R/-Z */
@@ -2876,7 +2832,7 @@ void set_ifs(const char *);
  * %#x produces '0x' + w/4 + NUL which is at least as long (w=8)
  * %+d produces sign + w/log₂(10) + NUL
  */
-#define NUMBUFSZ (1U + (UMAX_BITS(kul) + 2U) / 3U + /* NUL */ 1U)
+#define NUMBUFSZ (1U + (mbiTYPE_UBITS(kul) + 2U) / 3U + /* NUL */ 1U)
 #define NUMBUFLEN(base,result) ((base) + NUMBUFSZ - (result) - 1U)
 char *kulfmt(kul number, kui flags, char *numbuf)
     MKSH_A_BOUNDED(__minbytes__, 3, NUMBUFSZ);
@@ -2983,7 +2939,7 @@ const char *skip_varname(const char *, bool) MKSH_A_PURE;
 const char *skip_wdvarname(const char *, bool) MKSH_A_PURE;
 int is_wdvarname(const char *, bool) MKSH_A_PURE;
 int is_wdvarassign(const char *) MKSH_A_PURE;
-struct tbl *arraysearch(struct tbl *, kul_ari);
+struct tbl *arraysearch(struct tbl *, k32);
 char **makenv(void);
 void change_winsz(void);
 size_t array_ref_len(const char *) MKSH_A_PURE;
