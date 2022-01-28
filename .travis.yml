@@ -1,13 +1,30 @@
 {
-  "before_install": [
-    "sudo apt-get -qq update",
-    "sudo apt-get install -y ed"
-  ],
   "before_script": "set -ex && rm -rf build* && mkdir build-mksh build-lksh && cp GNUmakefile build-mksh && cp GNUmakefile build-lksh && (cd build-mksh && sh ../Build.sh -M) && (cd build-lksh && bash ../Build.sh -L -M)",
-  "compiler": [
-    "clang",
-    "gcc"
-  ],
+  "jobs": {
+    "include": [
+      {
+        "addons": {
+          "apt": {
+            "packages": [
+              "ed"
+            ]
+          }
+        },
+        "compiler": "gcc",
+        "dist": "focal",
+        "os": "linux"
+      },
+      {
+        "compiler": "clang",
+        "os": "osx",
+        "osx_image": "xcode13.2"
+      },
+      {
+        "compiler": "clang",
+        "os": "freebsd"
+      }
+    ]
+  },
   "language": "c",
   "script": "set -ex && for x in build-mksh build-lksh; do (cd $x && make -f GNUmakefile -j2 all && make -f GNUmakefile regress && ./?ksh ../FAQ2HTML.sh); done"
 }
