@@ -9,5 +9,5 @@
     "gcc"
   ],
   "language": "c",
-  "script": "set -ex && for x in build-mksh build-lksh; do (cd $x && make -f GNUmakefile all && make -f GNUmakefile regress && ./?ksh ../FAQ2HTML.sh); done"
+  "script": "set -ex && for x in build-mksh build-lksh; do (cd $x && make -f GNUmakefile -j2 all && make -f GNUmakefile regress && ./?ksh ../FAQ2HTML.sh); done"
 }
