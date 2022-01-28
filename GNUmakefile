@@ -2,7 +2,7 @@ all:
 
 include Makefrag.inc
 
-VPATH=		.
+VPATH=		..
 all: $(PROG)
 $(PROG): $(OBJS_BP)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS_BP) $(LIBS)
