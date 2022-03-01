@@ -2,7 +2,8 @@
 
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2011,
- *		 2012, 2013, 2014, 2015, 2016, 2018, 2019, 2021
+ *		 2012, 2013, 2014, 2015, 2016, 2018, 2019, 2021,
+ *		 2022
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -26,7 +27,7 @@
 #include <poll.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.151 2022/01/28 10:28:18 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/jobs.c,v 1.153 2022/02/19 21:21:57 tg Exp $");
 
 #if HAVE_KILLPG
 #define mksh_killpg		killpg
@@ -157,7 +158,7 @@ static volatile sig_atomic_t held_sigchld;
 
 #ifndef MKSH_UNEMPLOYED
 static struct shf	*shl_j;
-static bool		ttypgrp_ok;	/* set if can use tty pgrps */
+static Wahr		ttypgrp_ok;	/* set if can use tty pgrps */
 static pid_t		restore_ttypgrp = -1;
 static int const	tt_sigs[] = { SIGTSTP, SIGTTIN, SIGTTOU };
 #endif
@@ -186,11 +187,11 @@ void
 j_init(void)
 {
 #ifndef MKSH_NOPROSPECTOFWORK
-	(void)sigemptyset(&sm_default);
+	sigemptyset(&sm_default);
 	sigprocmask(SIG_SETMASK, &sm_default, NULL);
 
-	(void)sigemptyset(&sm_sigchld);
-	(void)sigaddset(&sm_sigchld, SIGCHLD);
+	sigemptyset(&sm_sigchld);
+	sigaddset(&sm_sigchld, SIGCHLD);
 
 	setsig(&sigtraps[SIGCHLD], j_sigchld,
 	    SS_RESTORE_ORIG|SS_FORCE|SS_SHTRAP);
@@ -282,11 +283,11 @@ j_suspend(void)
 			if (setpgid(0, kshpid) < 0) {
 				kwarnf0(KWF_PREFIX, Tf_ssfailed,
 				    Tj_suspend, "setpgid");
-				ttypgrp_ok = false;
+				ttypgrp_ok = Nee;
 			} else if (tcsetpgrp(tty_fd, kshpid) < 0) {
 				kwarnf0(KWF_PREFIX, Tf_ssfailed,
 				    Tj_suspend, "tcsetpgrp");
-				ttypgrp_ok = false;
+				ttypgrp_ok = Nee;
 			}
 		}
 		tty_init_state();
@@ -300,7 +301,7 @@ j_exit(void)
 {
 	/* kill stopped, and possibly running, jobs */
 	Job *j;
-	bool killed = false;
+	Wahr killed = Nee;
 
 	for (j = job_list; j != NULL; j = j->next) {
 		if (j->ppid == procpid &&
@@ -308,7 +309,7 @@ j_exit(void)
 		    (j->state == PRUNNING &&
 		    ((j->flags & JF_FG) ||
 		    (Flag(FLOGIN) && !Flag(FNOHUP) && procpid == kshpid))))) {
-			killed = true;
+			killed = Ja;
 			if (j->pgrp == 0)
 				kill_job(j, SIGHUP);
 			else
@@ -355,14 +356,13 @@ j_change(void)
 	int i;
 
 	if (Flag(FMONITOR)) {
-		bool use_tty = Flag(FTALKING);
-
 		/* don't call mksh_tcget until we own the tty process group */
-		if (use_tty)
+		if (Flag(FTALKING))
 			tty_init_talking();
 
 		/* no controlling tty, no SIGT* */
-		if ((ttypgrp_ok = (use_tty && tty_fd >= 0 && tty_devtty))) {
+		ttypgrp_ok = (Flag(FTALKING) && tty_fd >= 0 && tty_devtty);
+		if (ttypgrp_ok) {
 			setsig(&sigtraps[SIGTTIN], SIG_DFL,
 			    SS_RESTORE_ORIG|SS_FORCE);
 			/* wait to be given tty (POSIX.1, B.2, job control) */
@@ -372,7 +372,7 @@ j_change(void)
 				if ((ttypgrp = tcgetpgrp(tty_fd)) < 0) {
 					kwarnf0(KWF_PREFIX, Tf_ssfailed,
 					    "j_init", "tcgetpgrp");
-					ttypgrp_ok = false;
+					ttypgrp_ok = Nee;
 					break;
 				}
 				if (ttypgrp == kshpgrp)
@@ -387,24 +387,24 @@ j_change(void)
 			if (setpgid(0, kshpid) < 0) {
 				kwarnf0(KWF_PREFIX, Tf_ssfailed,
 				    "j_init", "setpgid");
-				ttypgrp_ok = false;
+				ttypgrp_ok = Nee;
 			} else {
 				if (tcsetpgrp(tty_fd, kshpid) < 0) {
 					kwarnf0(KWF_PREFIX, Tf_ssfailed,
 					    "j_init", "tcsetpgrp");
-					ttypgrp_ok = false;
+					ttypgrp_ok = Nee;
 				} else
 					restore_ttypgrp = kshpgrp;
 				kshpgrp = kshpid;
 			}
 		}
 #ifndef MKSH_DISABLE_TTY_WARNING
-		if (use_tty && !ttypgrp_ok)
+		if (Flag(FTALKING) && !ttypgrp_ok)
 			kwarnf(KWF_PREFIX | KWF_ONEMSG | KWF_NOERRNO,
 			    "won't have full job control");
 #endif
 	} else {
-		ttypgrp_ok = false;
+		ttypgrp_ok = Nee;
 		if (Flag(FTALKING))
 			for (i = NELEM(tt_sigs); --i >= 0; )
 				setsig(&sigtraps[tt_sigs[i]], SIG_IGN,
@@ -419,7 +419,10 @@ j_change(void)
 					    SS_RESTORE_ORIG|SS_FORCE);
 			}
 	}
-	tty_init_state();
+	if (Flag(FTALKING))
+		tty_init_state();
+	else
+		tty_hasstate = Nee;
 }
 #endif
 
@@ -436,7 +439,7 @@ ksh_nice(int ness)
 	if (nice(ness) == -1 && (eno = errno) != 0)
 		kwarnf(KWF_VERRNO | KWF_PREFIX | KWF_ONEMSG, eno, "bgnice");
 #else
-	(void)nice(ness);
+	nice(ness);
 #endif
 }
 #endif
@@ -545,12 +548,12 @@ exchild(struct op *t, int flags,
 #ifndef MKSH_UNEMPLOYED
 	/* job control set up */
 	if (Flag(FMONITOR) && !(flags&XXCOM)) {
-		bool dotty = false;
+		Wahr dotty = Nee;
 
 		if (j->pgrp == 0) {
 			/* First process */
 			j->pgrp = p->pid;
-			dotty = true;
+			dotty = Ja;
 		}
 
 		/*
@@ -572,7 +575,7 @@ exchild(struct op *t, int flags,
 
 		/* Do this before restoring signal */
 		if (flags & XCOPROC)
-			coproc_cleanup(false);
+			coproc_cleanup(Nee);
 		cleanup_parents_env();
 #ifndef MKSH_UNEMPLOYED
 		/*
@@ -601,7 +604,7 @@ exchild(struct op *t, int flags,
 			    SS_RESTORE_IGN|SS_FORCE);
 			if ((!(flags & (XPIPEI | XCOPROC))) &&
 			    ((forksleep = open("/dev/null", 0)) > 0)) {
-				(void)ksh_dup2(forksleep, 0, true);
+				ksh_dup2(forksleep, 0, Ja);
 				close(forksleep);
 			}
 		}
@@ -613,7 +616,7 @@ exchild(struct op *t, int flags,
 #endif
 		nzombie = 0;
 #ifndef MKSH_UNEMPLOYED
-		ttypgrp_ok = false;
+		ttypgrp_ok = Nee;
 		Flag(FMONITOR) = 0;
 #endif
 		Flag(FTALKING) = 0;
@@ -835,7 +838,7 @@ j_resume(const char *cp, int bg)
 	Job *j;
 	Proc *p;
 	int ecode, rv = 0;
-	bool running;
+	Wahr running;
 	sigset_t omask;
 
 	sigprocmask(SIG_BLOCK, &sm_sigchld, &omask);
@@ -857,12 +860,12 @@ j_resume(const char *cp, int bg)
 		shf_putc(' ', shl_stdout);
 	}
 
-	running = false;
+	running = Nee;
 	for (p = j->proc_list; p != NULL; p = p->next) {
 		if (p->state == PSTOPPED) {
 			p->state = PRUNNING;
 			p->status = 0;
-			running = true;
+			running = Ja;
 		}
 		shf_puts(p->command, shl_stdout);
 		if (p->next)
@@ -1566,10 +1569,10 @@ j_print(Job *j, int how, struct shf *shf)
 	int state;
 	int status;
 #ifdef WCOREDUMP
-	bool coredumped;
+	Wahr coredumped;
 #endif
 	char jobchar;
-	bool output = false;
+	Wahr output = Nee;
 	const char *msg;
 	const char *filler;
 	char msgbuf[sizeof("Done (255)")];
@@ -1596,7 +1599,7 @@ j_print(Job *j, int how, struct shf *shf)
 
 	for (p = j->proc_list; p != NULL;) {
 #ifdef WCOREDUMP
-		coredumped = false;
+		coredumped = Nee;
 #endif
 		switch (p->state) {
 		case PRUNNING:
@@ -1621,7 +1624,7 @@ j_print(Job *j, int how, struct shf *shf)
 		case PSIGNALLED:
 #ifdef WCOREDUMP
 			if (WCOREDUMP(p->status))
-				coredumped = true;
+				coredumped = Ja;
 #endif
 			status = WTERMSIG(p->status);
 			/* only report “abnormal” termination signals short */
@@ -1641,7 +1644,7 @@ j_print(Job *j, int how, struct shf *shf)
 
 		if (how == JP_SHORT) {
 			if (msg[0]) {
-				output = true;
+				output = Ja;
 				shf_puts(msg, shf);
 #ifdef WCOREDUMP
 				if (coredumped)
@@ -1657,7 +1660,7 @@ j_print(Job *j, int how, struct shf *shf)
 				shf_puts(filler, shf);
 			if (how == JP_LONG)
 				shf_fprintf(shf, "%5d ", (int)p->pid);
-			output = true;
+			output = Ja;
 			shf_fprintf(shf, "%-20s %s", msg, p->command);
 			if (p->next) {
 				shf_putc(' ', shf);
@@ -1984,7 +1987,7 @@ tty_init_state(void)
 {
 	if (tty_fd >= 0) {
 		mksh_tcget(tty_fd, &tty_state);
-		tty_hasstate = true;
+		tty_hasstate = Ja;
 	}
 }
 
@@ -1996,7 +1999,7 @@ vistree(char *dst, size_t sz, struct op *t)
 
 	snptreef(buf, sizeof(buf), Tf_T, t);
 	shf_sopen(dst, sz, SHF_WR, &shf);
-	uprntmbs(buf, false, &shf);
+	uprntmbs(buf, Nee, &shf);
 	while ((char *)shf.wp > dst && ctype(shf.wp[-1], C_IFSWS))
 		--shf.wp;
 	shf_sclose(&shf);

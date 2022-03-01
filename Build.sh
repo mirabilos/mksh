@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.821 2022/01/28 14:26:27 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.826 2022/03/01 20:38:14 tg Exp $'
 set +evx
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -61,10 +61,11 @@ test_tool grep foobarbaz 'grep bar' foobarbaz
 test_tool sed abc 'sed y/ac/AC/' AbC
 test_tool tr abc 'tr ac AC' AbC
 
+sp=' '
+ht='	'
 nl='
 '
-safeIFS='	'
-safeIFS=" $safeIFS$nl"
+safeIFS="$sp$ht$nl"
 IFS=$safeIFS
 allu=QWERTYUIOPASDFGHJKLZXCVBNM
 alll=qwertyuiopasdfghjklzxcvbnm
@@ -166,7 +167,7 @@ do_genopt() {
 			;;
 		*:@@*)
 			genopt_die ;;
-		0:/\*-|0:\ \**|0:)
+		0:/\*-|0:"$sp"\**|0:)
 			o_hdr=$o_hdr$nl$line
 			;;
 		0:@*|1:@*)
@@ -286,7 +287,7 @@ fx=
 me=`basename "$0"`
 orig_CFLAGS=$CFLAGS
 phase=x
-oldish_ed=stdout-ed,no-stderr-ed
+oldish_ed='stdout-ed no-stderr-ed'
 
 if test -t 1; then
 	bi='[1m'
@@ -547,25 +548,42 @@ addsrcs() {
 		fr=1
 	fi
 	eval i=\$$1
-	test $fr = "$i" && case " $SRCS " in
-	*\ $2\ *)	;;
-	*)		SRCS="$SRCS $2" ;;
+	test $fr = "$i" && case "$sp$SRCS$sp" in
+	*"$sp$2$sp"*)	;;
+	*)		SRCS="$SRCS$sp$2" ;;
 	esac
 }
 
 # --- main ---
 
 curdir=`pwd` srcdir=`dirname "$0" 2>/dev/null`
+curdisp=.
+case x$curdir in
+x)
+	curdir=.
+	;;
+*"$sp"*|*"$ht"*|*"$nl"*)
+	echo >&2 Current directory should not contain space or tab or newline.
+	echo >&2 Errors may occur.
+	;;
+*"'"*)
+	echo >&2 Current directory should not contain single quotes.
+	echo >&2 Errors may occur.
+	;;
+*)
+	curdisp=$curdir
+	;;
+esac
 case x$srcdir in
 x)
 	srcdir=.
 	;;
-*\ *|*"	"*|*"$nl"*)
+*"$sp"*|*"$ht"*|*"$nl"*)
 	echo >&2 Source directory should not contain space or tab or newline.
 	echo >&2 Errors may occur.
 	;;
 *"'"*)
-	echo Source directory must not contain single quotes.
+	echo >&2 Source directory must not contain single quotes.
 	exit 1
 	;;
 esac
@@ -691,8 +709,8 @@ if test -d $tfn || test -d $tfn.exe; then
 fi
 test x"$use_ach" = x"1" || use_ach=0
 cpp_define MKSH_BUILDSH 1
-rmf a.exe* a.out* conftest.c conftest.exe* *core core.* ${tfn}* *.bc *.dbg \
-    *.ll *.o *.gen *.cat1 Rebuild.sh lft no signames.inc test.sh x vv.out *.htm
+rmf a.exe* a.out* conftest.* *core core.* ${tfn}* *.bc *.dbg *.ll *.o *.cat? \
+    *.gen Rebuild.sh Makefrag.inc lft no signames.inc test.sh x vv.out *.htm
 
 SRCS="lalloc.c edit.c eval.c exec.c expr.c funcs.c histrap.c jobs.c"
 SRCS="$SRCS lex.c main.c misc.c shf.c syn.c tree.c var.c"
@@ -715,7 +733,7 @@ else
 	cpp_define MKSH_WITH_TEXTMODE 1
 fi
 
-if test x"$srcdir" = x"."; then
+if test_z "$srcdisp"; then
 	CPPFLAGS="-I. $CPPFLAGS"
 else
 	CPPFLAGS="-I. -I'$srcdir' $CPPFLAGS"
@@ -1964,13 +1982,6 @@ ac_test attribute_noreturn attribute_extension 0 'for __attribute__((__noreturn_
 	int main(void) { fnord(); }
 	void fnord(void) { exit(0); }
 EOF
-ac_test attribute_pure attribute_extension 0 'for __attribute__((__pure__))' <<-'EOF'
-	#include <unistd.h>
-	#undef __attribute__
-	int foo(const char *) __attribute__((__pure__));
-	int main(int ac, char *av[]) { return (foo(av[ac - 1]) + isatty(0)); }
-	int foo(const char *s) { return ((int)s[0]); }
-EOF
 ac_test attribute_unused attribute_extension 0 'for __attribute__((__unused__))' <<-'EOF'
 	#include <unistd.h>
 	#undef __attribute__
@@ -2089,10 +2100,13 @@ rmf lft*	# end of large file support test
 #
 # Environment: types
 #
-ac_test can_inttypes '!' stdint_h 1 "for standard 32-bit integer types" <<-'EOF'
+ac_test can_inttypes '' "for standard 32-bit integer types" <<-'EOF'
 	#include <sys/types.h>
 	#include <limits.h>
 	#include <stddef.h>
+	#if HAVE_STDINT_H
+	#include <stdint.h>
+	#endif
 	int main(int ac, char *av[]) {
 		return ((int)((uint32_t)(size_t)*av +
 		    ((int32_t)ac - INT32_MAX)));
@@ -2763,7 +2777,7 @@ $e $bi$me: Finished configuration testing, now producing output.$ao
 
 files=
 objs=
-sp=
+fsp=
 case $tcfn in
 a.exe|conftest.exe)
 	buildoutput=$tfn.exe
@@ -2773,19 +2787,15 @@ a.exe|conftest.exe)
 	buildoutput=$tfn
 	;;
 esac
-case $curdir in
-*\ *)	mkshshebang="#!./$buildoutput" ;;
-*)	mkshshebang="#!$curdir/$buildoutput" ;;
-esac
 cat >test.sh <<-EOF
-	$mkshshebang
+	#!$curdisp/$buildoutput
 	LC_ALL=C PATH='$PATH'; export LC_ALL PATH
 	case \$KSH_VERSION in
 	*MIRBSD*|*LEGACY*) ;;
 	*) exit 1 ;;
 	esac
 	set -A check_categories -- $check_categories
-	pflag='$curdir/$buildoutput'
+	pflag='$curdisp/$buildoutput'
 	sflag='$srcdir/check.t'
 	usee=0 useU=0 Pflag=0 Sflag=0 uset=0 vflag=1 xflag=0
 	while getopts "C:e:fPp:QSs:t:U:v" ch; do case \$ch {
@@ -2888,9 +2898,7 @@ llvm)
 	;;
 esac
 echo ": # work around NeXTstep bug" >Rebuild.sh
-cd "$srcdir"
-optfiles=`echo *.opt`
-cd "$curdir"
+optfiles=`cd "$srcdir" && echo *.opt`
 for file in $optfiles; do
 	echo "echo + Running genopt on '$file'..."
 	echo "(srcfile='$srcdir/$file'; BUILDSH_RUN_GENOPT=1; . '$srcdir/Build.sh')"
@@ -2899,16 +2907,16 @@ echo set -x >>Rebuild.sh
 for file in $SRCS; do
 	op=`echo x"$file" | sed 's/^x\(.*\)\.c$/\1./'`
 	test -f $file || file=$srcdir/$file
-	files="$files$sp$file"
+	files="$files$fsp$file"
 	echo "$CC $CFLAGS $Cg $CPPFLAGS $emitbc $file || exit 1" >>Rebuild.sh
 	if test $cm = dragonegg; then
 		echo "mv ${op}s ${op}ll" >>Rebuild.sh
 		echo "llvm-as ${op}ll || exit 1" >>Rebuild.sh
-		objs="$objs$sp${op}bc"
+		objs="$objs$fsp${op}bc"
 	else
-		objs="$objs$sp${op}o"
+		objs="$objs$fsp${op}o"
 	fi
-	sp=' '
+	fsp=$sp
 done
 case $cm in
 dragonegg|llvm)
@@ -2924,37 +2932,50 @@ echo tcfn=$buildoutput >>Rebuild.sh
 echo "$CC $CFLAGS $Cg $LDFLAGS -o \$tcfn $lobjs $LIBS $ccpr" >>Rebuild.sh
 echo "test -f \$tcfn || exit 1; $SIZE \$tcfn" >>Rebuild.sh
 if test $cm = makefile; then
-	extras='emacsfn.h exprtok.h rlimits.opt sh.h sh_flags.opt ulimits.opt var_spec.h'
+	extras='emacsfn.h exprtok.h mbsdint.h mirhash.h mksh.faq rlimits.opt sh.h sh_flags.opt ulimits.opt var_spec.h'
 	test 0 = $HAVE_SOME_SIGNAME && extras="$extras signames.inc"
 	gens= genq=
 	for file in $optfiles; do
 		genf=`basename "$file" | sed 's/.opt$/.gen/'`
 		gens="$gens $genf"
-		genq="$genq$nl$genf: $srcdir/Build.sh $srcdir/$file
-			srcfile=$srcdir/$file; BUILDSH_RUN_GENOPT=1; . $srcdir/Build.sh"
+		genq="$genq$nl$genf: \$(SRCDIR)/Build.sh \$(SRCDIR)/$file
+	srcfile='\$(SRCDIR)/$file'; BUILDSH_RUN_GENOPT=1; . '\$(SRCDIR)/Build.sh'"
 	done
+	if test $legacy = 0; then
+		manpage=mksh.1
+	else
+		manpage=lksh.1
+	fi
 	cat >Makefrag.inc <<EOF
 # Makefile fragment for building $whatlong $dstversion
 
 PROG=		$buildoutput
-MAN=		mksh.1
+MAN=		$manpage
+FAQ=		FAQ.htm
+SRCDIR=		$srcdir
+MF_DIR=		$curdisp
 SRCS=		$SRCS
 SRCS_FP=	$files
 OBJS_BP=	$objs
 INDSRCS=	$extras
 NONSRCS_INST=	dot.mkshrc \$(MAN)
-NONSRCS_NOINST=	Build.sh Makefile Rebuild.sh check.pl check.t test.sh
+NONSRCS_NOINST=	Build.sh FAQ2HTML.sh Makefile Rebuild.sh check.pl check.t mksh.ico test.sh
 CC=		$CC
-CPPFLAGS=	$CPPFLAGS
+CPPFLAGS=	$CPPFLAGS -I'\$(MF_DIR)'
 CFLAGS=		$CFLAGS $Cg
 LDFLAGS=	$LDFLAGS
 LIBS=		$LIBS
 
+# for all make variants:
+#all: \$(PROG) \$(FAQ)
+
 .depend \$(OBJS_BP):$gens$genq
 
+FAQ.htm: \$(SRCDIR)/FAQ2HTML.sh \$(SRCDIR)/mksh.faq
+	\$(SHELL) '\$(SRCDIR)/FAQ2HTML.sh' '\$(SRCDIR)/mksh.faq'
+
 # not BSD make only:
-#VPATH=		$srcdir
-#all: \$(PROG)
+#VPATH=		\$(SRCDIR)
 #\$(PROG): \$(OBJS_BP)
 #	\$(CC) \$(CFLAGS) \$(LDFLAGS) -o \$@ \$(OBJS_BP) \$(LIBS)
 #\$(OBJS_BP): \$(SRCS_FP) \$(NONSRCS)
@@ -2964,11 +2985,18 @@ LIBS=		$LIBS
 # for all make variants:
 #REGRESS_FLAGS=	-f
 #regress:
-#	./test.sh \$(REGRESS_FLAGS)
+#	'\$(MF_DIR)/test.sh' \$(REGRESS_FLAGS)
 check_categories=$check_categories
+#PERL=		perl
+#UTFLOCALE=	C.UTF-8
+#TESTONLY=
+#altregress:
+#	\$(PERL) '\$(SRCDIR)/check.pl' -p ./$buildoutput \\
+#	    -C \`echo "X\$(check_categories)" | sed -e 's/^X[	 ]*//' -e 's/ /,/g'\` \\
+#	    -U \$(UTFLOCALE) -v -s '\$(SRCDIR)/check.t' \$(TESTONLY)
 
 # for BSD make only:
-#.PATH: $srcdir
+#.PATH: \$(SRCDIR)
 #.include <bsd.prog.mk>
 EOF
 	$e
