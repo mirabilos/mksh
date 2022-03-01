@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.978 2022/01/28 10:28:20 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.983 2022/02/26 05:32:56 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -148,11 +148,6 @@
 #else
 #define MKSH_A_NORETURN		/* nothing */
 #endif
-#if HAVE_ATTRIBUTE_PURE
-#define MKSH_A_PURE		__attribute__((__pure__))
-#else
-#define MKSH_A_PURE		/* nothing */
-#endif
 #if HAVE_ATTRIBUTE_UNUSED
 #define MKSH_A_UNUSED		__attribute__((__unused__))
 #else
@@ -202,7 +197,7 @@
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#define MKSH_VERSION "R59 2022/01/27"
+#define MKSH_VERSION "R59 2022/02/08"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -217,6 +212,21 @@ typedef signed long ksl;		/* signed long, arithmetic */
 #define KBI(c)	((kui)(KUI(c) & 0xFFU))	/* byte as u_int, truncated */
 #define KUI(u)	((kui)(u))		/* int as u_int, not truncated */
 #define K32(u)	((k32)(KUI(u) & 0xFFFFFFFFU))
+
+/*XXX TODO:
+ * arithmetic type need not be long, it can be unsigned int if we can
+ * guarantee that it’s exactly⚠ 32 bit wide; in the !lksh case, never
+ * shall a signed integer be needed; for lksh signed arithmetic, only
+ * I think, the values need to be converted temporarily; !lksh signed
+ * arithmetic is instead done in unsigned; kul → kua (ksl → ksa lksh)
+ */
+#ifdef MKSH_LEGACY_MODE
+#define KUA_HM		((kul)(LONG_MAX))
+#define KUA_FM		((kul)(ULONG_MAX))
+#else
+#define KUA_HM		((kul)0x7FFFFFFFUL)
+#define KUA_FM		((kul)0xFFFFFFFFUL)
+#endif
 
 /* arithmetic types: shell arithmetics */
 
@@ -260,18 +270,10 @@ typedef unsigned int mksh_uari_t;
 /* new arithmetics in preparation */
 
 /* boolean type (no <stdbool.h> deliberately) */
-typedef unsigned char mksh_bool;
-#undef bool
-/* false MUST equal the same 0 as written by static storage initialisation */
-#undef false
-#undef true
-/* access macros for boolean type */
-#define bool		mksh_bool
-/* values must have identity mapping between mksh_bool and short */
-#define false		0
-#define true		1
-/* make any-type into bool or short */
-#define tobool(cond)	((cond) ? true : false)
+typedef unsigned char Wahr;
+#define Ja		1U
+#define Nee		0U
+#define isWahr(cond)	((cond) ? Ja : Nee)
 
 /* other standard types */
 
@@ -391,18 +393,17 @@ extern int ksh_getrusage(int, struct rusage *);
 #endif
 #endif
 
-#ifndef SIZE_MAX
-#define SIZE_MAX	((size_t)-1)
-#endif
-
-#ifndef PTRDIFF_MAX
-#if (sizeof(size_t) == sizeof(ptrdiff_t)) && ((SIZE_MAX) == ((size_t)-1))
-#define PTRDIFF_MAX	((ptrdiff_t)(SIZE_MAX >> 1))
-#endif
-#endif
-
 /* limit maximum object size so we can express pointer differences w/o UB */
-#if SIZE_MAX <= PTRDIFF_MAX
+#if !defined(SIZE_MAX)
+#ifdef PTRDIFF_MAX
+#define mksh_MAXSZ	((size_t)PTRDIFF_MAX)
+#else
+#define mksh_MAXSZ	((size_t)(((size_t)-1) >> 1))
+#endif
+#elif !defined(PTRDIFF_MAX)
+/* can we limit? maybe but also maybe not */
+#define mksh_MAXSZ	SIZE_MAX
+#elif SIZE_MAX <= PTRDIFF_MAX
 #define mksh_MAXSZ	SIZE_MAX
 #else
 #define mksh_MAXSZ	((size_t)PTRDIFF_MAX)
@@ -1022,7 +1023,7 @@ EXTERN kby baseline_flags[FNFLAGS
     + 1
 #endif
     ];
-EXTERN bool as_builtin;		/* direct builtin call */
+EXTERN Wahr as_builtin;		/* direct builtin call */
 EXTERN const char *kshname;	/* $0 */
 EXTERN struct {
 	uid_t kshuid_v;		/* real UID of shell at startup */
@@ -1409,8 +1410,8 @@ struct temp {
 #ifdef DF
 #define shl_dbg		(&shf_iob[3])	/* for DF() */
 #endif
-EXTERN bool initio_done;		/* shl_*out:true/1, shl_dbg:2 */
-EXTERN bool shl_stdout_ok;
+EXTERN Wahr initio_done;		/* shl_*out:Ja/1, shl_dbg:2 */
+EXTERN Wahr shl_stdout_ok;
 
 /*
  * trap handlers
@@ -1460,7 +1461,7 @@ extern Trap sigtraps[ksh_NSIG + 1];
 #ifdef SIGWINCH
 EXTERN volatile sig_atomic_t got_winch E_INIT(1);
 #else
-#define got_winch	true
+#define got_winch	Ja
 #endif
 
 /*
@@ -1476,7 +1477,7 @@ EXTERN unsigned int ksh_tmout;
 EXTERN enum tmout_enum ksh_tmout_state;
 
 /* For "You have stopped jobs" message */
-EXTERN bool really_exit;
+EXTERN Wahr really_exit;
 
 /*
  * fast character classes
@@ -1667,11 +1668,11 @@ extern void ebcdic_init(void);
 #define ksh_isctrl8(c)	(Flag(FASIS) ? ksh_asisctrl(c) : ksh_isctrl(c))
 #endif
 /* new fast character classes */
-#define ctype(c,t)	tobool(ksh_ctypes[ord(c)] & (t))
+#define ctype(c,t)	isWahr(ksh_ctypes[ord(c)] & (t))
 #define cinttype(c,t)	((c) >= 0 && (c) <= 0xFF ? \
-			tobool(ksh_ctypes[KBY(c)] & (t)) : false)
+			isWahr(ksh_ctypes[KBY(c)] & (t)) : Nee)
 /* helper functions */
-#define ksh_isdash(s)	tobool(ord((s)[0]) == '-' && ord((s)[1]) == '\0')
+#define ksh_isdash(s)	isWahr(ord((s)[0]) == '-' && ord((s)[1]) == '\0')
 /* invariant distance even in EBCDIC */
 #define ksh_tolower(c)	(ctype(c, C_UPPER) ? (c) - 'A' + 'a' : (c))
 #define ksh_toupper(c)	(ctype(c, C_LOWER) ? (c) - 'a' + 'A' : (c))
@@ -1738,7 +1739,7 @@ EXTERN sigset_t		sm_default, sm_sigchld;
 /* name of called builtin function (used by error functions) */
 EXTERN const char *builtin_argv0;
 /* is called builtin a POSIX special builtin? (error functions only) */
-EXTERN bool builtin_spec;
+EXTERN Wahr builtin_spec;
 
 /* current working directory */
 EXTERN char	*current_wd;
@@ -1883,7 +1884,7 @@ struct tbl {
 
 EXTERN struct tbl *vtemp;
 /* set by isglobal(), global() and local() */
-EXTERN bool last_lookup_was_array;
+EXTERN Wahr last_lookup_was_array;
 
 /* common flag bits */
 #define ALLOC		BIT(0)	/* val.s has been allocated */
@@ -2261,8 +2262,8 @@ typedef struct {
 struct columnise_opts {
 	struct shf *shf;
 	char linesep;
-	bool do_last;
-	bool prefcol;
+	Wahr do_last;
+	Wahr prefcol;
 };
 
 /*
@@ -2495,7 +2496,7 @@ void afree(void *, Area *);	/* can take NULL */
 				    aresize((p), (n), (ap)) : (p))
 /* edit.c */
 #ifndef MKSH_NO_CMDLINE_EDITING
-int x_bind(const char * SMALLP(bool));
+int x_bind(const char * SMALLP(Wahr));
 int x_bind_check(void);
 int x_bind_list(void);
 int x_bind_showall(void);
@@ -2505,7 +2506,7 @@ void x_done(void);
 #endif
 char *x_read(char *);
 #endif
-void x_mkraw(int, mksh_ttyst *, bool);
+void x_mkraw(int, mksh_ttyst *, Wahr);
 void x_initterm(const char *);
 /* eval.c */
 char *substitute(const char *, int);
@@ -2514,25 +2515,25 @@ char *evalstr(const char *cp, int);
 char *evalonestr(const char *cp, int);
 char *debunk(char *, const char *, size_t);
 void expand(const char *, XPtrV *, int);
-int glob_str(char *, XPtrV *, bool);
+int glob_str(char *, XPtrV *, Wahr);
 char *do_tilde(char *);
 /* exec.c */
 int execute(struct op * volatile, volatile int, volatile int * volatile);
 int c_builtin(const char **);
 struct tbl *get_builtin(const char *);
-struct tbl *findfunc(const char *, k32, bool);
+struct tbl *findfunc(const char *, k32, Wahr);
 int define(const char *, struct op *);
 const char *builtin(const char *, int (*)(const char **));
 struct tbl *findcom(const char *, int);
-void flushcom(bool);
+void flushcom(Wahr);
 int search_access(const char *, int);
 const char *search_path(const char *, const char *, int, int *);
 void pr_menu(const char * const *);
 void pr_list(struct columnise_opts *, char * const *);
 int herein(struct ioword *, char **);
 /* expr.c */
-int evaluate(const char *, mksh_ari_t *, int, bool);
-int v_evaluate(struct tbl *, const char *, volatile int, bool);
+int evaluate(const char *, mksh_ari_t *, int, Wahr);
+int v_evaluate(struct tbl *, const char *, volatile int, Wahr);
 /* UTF-8 stuff */
 char *ez_bs(char *, char *);
 size_t utf_mbtowc(unsigned int *, const char *);
@@ -2547,11 +2548,11 @@ size_t ez_mbtowc(unsigned int *, const char *);
 size_t ez_mbtoc(unsigned int *, const char *);
 size_t ez_ctomb(char *, unsigned int);
 int utf_widthadj(const char *, const char **);
-size_t utf_mbswidth(const char *) MKSH_A_PURE;
+size_t utf_mbswidth(const char *);
 #ifdef MIRBSD_BOOTFLOPPY
 #define utf_wcwidth(i) wcwidth((wchar_t)(i))
 #else
-int utf_wcwidth(unsigned int) MKSH_A_PURE;
+int utf_wcwidth(unsigned int);
 #endif
 int ksh_access(const char *, int);
 struct tbl *tempvar(const char *);
@@ -2565,7 +2566,7 @@ int c_printf(const char **);
 int c_whence(const char **);
 int c_command(const char **);
 int c_typeset(const char **);
-bool valid_alias_name(const char *);
+Wahr valid_alias_name(const char *);
 int c_alias(const char **);
 int c_unalias(const char **);
 int c_let(const char **);
@@ -2607,9 +2608,9 @@ void hist_init(Source *);
 #if HAVE_PERSISTENT_HISTORY
 void hist_finish(void);
 #endif
-void histsave(int *, const char *, int, bool);
+void histsave(int *, const char *, int, Wahr);
 #if !defined(MKSH_SMALL) && HAVE_PERSISTENT_HISTORY
-bool histsync(void);
+Wahr histsync(void);
 #endif
 int c_fc(const char **);
 void sethistsize(mksh_ari_t);
@@ -2617,24 +2618,24 @@ void sethistsize(mksh_ari_t);
 void sethistfile(const char *);
 #endif
 #if !defined(MKSH_NO_CMDLINE_EDITING) && !MKSH_S_NOVI
-char **histpos(void) MKSH_A_PURE;
+char **histpos(void);
 int histnum(int);
 #endif
-int findhist(int, const char *, bool, bool) MKSH_A_PURE;
-char **hist_get_newest(bool);
+int findhist(int, const char *, Wahr, Wahr);
+char **hist_get_newest(Wahr);
 void inittraps(void);
 void alarm_init(void);
-Trap *gettrap(const char *, bool, bool);
+Trap *gettrap(const char *, Wahr, Wahr);
 void trapsig(int);
 void intrcheck(void);
 int fatal_trap_check(void);
 int trap_pending(void);
 void runtraps(int intr);
-void runtrap(Trap *, bool);
+void runtrap(Trap *, Wahr);
 void cleartraps(void);
 void restoresigs(void);
 void settrap(Trap *, const char *);
-bool block_pipe(void);
+Wahr block_pipe(void);
 void restore_pipe(void);
 int setsig(Trap *, sig_t, int);
 void setexecsig(Trap *, int);
@@ -2670,7 +2671,7 @@ void set_prompt(int, Source *);
 int pprompt(const char *, int);
 /* main.c */
 kby kshname_islogin(const char **);
-int include(const char *, int, const char **, bool);
+int include(const char *, int, const char **, Wahr);
 int command(const char *, int);
 int shell(Source * volatile, volatile int);
 /* argument MUST NOT be 0 */
@@ -2690,7 +2691,7 @@ void shprintf(const char *, ...)
 int can_seek(int);
 void initio(void);
 void recheck_ctype(void);
-int ksh_dup2(int, int, bool);
+int ksh_dup2(int, int, Wahr);
 int savefd(int);
 void restfd(int, int);
 void openpipe(int *);
@@ -2717,17 +2718,17 @@ void DF(const char *, ...)
     MKSH_A_FORMAT(__printf__, 1, 2);
 #endif
 /* misc.c */
-size_t option(const char *) MKSH_A_PURE;
+size_t option(const char *);
 char *getoptions(void);
-void change_flag(enum sh_flag, unsigned int, bool);
-void change_xtrace(unsigned char, bool);
-int parse_args(const char **, unsigned int, bool *);
+void change_flag(enum sh_flag, unsigned int, Wahr);
+void change_xtrace(unsigned char, Wahr);
+int parse_args(const char **, unsigned int, Wahr *);
 int getn(const char *, int *);
 int getpn(const char **, int *);
-int gmatchx(const char *, const char *, bool);
-bool has_globbing(const char *) MKSH_A_PURE;
-int ascstrcmp(const void *, const void *) MKSH_A_PURE;
-int ascpstrcmp(const void *, const void *) MKSH_A_PURE;
+int gmatchx(const char *, const char *, Wahr);
+Wahr has_globbing(const char *);
+int ascstrcmp(const void *, const void *);
+int ascpstrcmp(const void *, const void *);
 void ksh_getopt_opterr(int, const char *, const char *);
 void ksh_getopt_reset(Getopt *, int);
 int ksh_getopt(const char **, Getopt *, const char *);
@@ -2750,7 +2751,7 @@ int c_cd(const char **);
 char *strdup_i(const char *, Area *);
 char *strndup_i(const char *, size_t, Area *);
 #endif
-int unbksl(bool, int (*)(void), void (*)(int));
+int unbksl(Wahr, int (*)(void), void (*)(int));
 #ifdef __OS2__
 /* os2.c */
 void os2_init(int *, const char ***);
@@ -2840,16 +2841,16 @@ char *kslfmt(ksl number, kui flags, char *numbuf)
     MKSH_A_BOUNDED(__minbytes__, 3, NUMBUFSZ);
 /* syn.c */
 void initkeywords(void);
-struct op *compile(Source *, bool);
-bool parse_usec(const char *, struct timeval *);
+struct op *compile(Source *, Wahr);
+Wahr parse_usec(const char *, struct timeval *);
 char *yyrecursive(int);
-void yyrecursive_pop(bool);
+void yyrecursive_pop(Wahr);
 void yyerror(const char *, ...)
     MKSH_A_NORETURN
     MKSH_A_FORMAT(__printf__, 1, 2);
 /* shell error reporting */
 void bi_unwind(int);
-bool error_prefix(bool);
+Wahr error_prefix(Wahr);
 #define KWF_BIERR	(KWF_ERR(1) | KWF_PREFIX | KWF_FILELINE | \
 			    KWF_BUILTIN | KWF_BIUNWIND)
 #define KWF_ERR(n)	((((unsigned int)(n)) & KWF_EXSTAT) | KWF_ERROR)
@@ -2859,7 +2860,7 @@ bool error_prefix(bool);
 #define KWF_WARNING	0x000000U	/* (default) warning */
 #define KWF_ERROR	0x000400U	/* error + consequences */
 #define KWF_PREFIX	0x000800U	/* run error_prefix() */
-#define KWF_FILELINE	0x001000U	/* error_prefix arg:=true */
+#define KWF_FILELINE	0x001000U	/* error_prefix arg:=Ja */
 #define KWF_BUILTIN	0x002000U	/* possibly show builtin_argv0 */
 #define KWF_MSGMASK	0x00C000U	/* (mask) message to display */
 #define KWF_MSGFMT	0x000000U	/* (default) printf-style variadic */
@@ -2918,35 +2919,35 @@ void uescmbT(unsigned char *, const char **)
     MKSH_A_BOUNDED(__minbytes__, 1, 5);
 int uwidthmbT(char *, char **);
 #endif
-const char *uprntmbs(const char *, bool, struct shf *);
-void fpFUNCTf(struct shf *, int, bool, const char *, struct op *);
+const char *uprntmbs(const char *, Wahr, struct shf *);
+void fpFUNCTf(struct shf *, int, Wahr, const char *, struct op *);
 /* var.c */
 void newblock(void);
 void popblock(void);
 void initvar(void);
 struct block *varsearch(struct block *, struct tbl **, const char *, k32);
 struct tbl *global(const char *);
-struct tbl *isglobal(const char *, bool);
-struct tbl *local(const char *, bool);
+struct tbl *isglobal(const char *, Wahr);
+struct tbl *local(const char *, Wahr);
 char *str_val(struct tbl *);
 int setstr(struct tbl *, const char *, int);
-struct tbl *setint_v(struct tbl *, struct tbl *, bool);
+struct tbl *setint_v(struct tbl *, struct tbl *, Wahr);
 void setint(struct tbl *, mksh_ari_t);
 void setint_n(struct tbl *, mksh_ari_t, int);
 struct tbl *typeset(const char *, kui, kui, int, int);
 void unset(struct tbl *, int);
-const char *skip_varname(const char *, bool) MKSH_A_PURE;
-const char *skip_wdvarname(const char *, bool) MKSH_A_PURE;
-int is_wdvarname(const char *, bool) MKSH_A_PURE;
-int is_wdvarassign(const char *) MKSH_A_PURE;
+const char *skip_varname(const char *, Wahr);
+const char *skip_wdvarname(const char *, Wahr);
+int is_wdvarname(const char *, Wahr);
+int is_wdvarassign(const char *);
 struct tbl *arraysearch(struct tbl *, k32);
 char **makenv(void);
 void change_winsz(void);
-size_t array_ref_len(const char *) MKSH_A_PURE;
+size_t array_ref_len(const char *);
 struct tbl *arraybase(const char *);
-mksh_uari_t set_array(const char *, bool, const char **);
-k32 hash(const void *) MKSH_A_PURE;
-k32 chvt_rndsetup(const void *, size_t) MKSH_A_PURE;
+mksh_uari_t set_array(const char *, Wahr, const char **);
+k32 hash(const void *);
+k32 chvt_rndsetup(const void *, size_t);
 k32 rndget(void);
 void rndset(unsigned long);
 void rndpush(const void *, size_t);
@@ -3013,23 +3014,23 @@ typedef struct test_env {
 	} pos;
 	const char **wp_end;		/* used by ptest_* */
 	Test_op (*isa)(struct test_env *, Test_meta);
-	const char *(*getopnd) (struct test_env *, Test_op, bool);
-	int (*eval)(struct test_env *, Test_op, const char *, const char *, bool);
+	const char *(*getopnd) (struct test_env *, Test_op, Wahr);
+	int (*eval)(struct test_env *, Test_op, const char *, const char *, Wahr);
 	void (*error)(struct test_env *, int, const char *);
 	int flags;			/* TEF_* */
 } Test_env;
 
 extern const char * const dbtest_tokens[];
 
-Test_op	test_isop(Test_meta, const char *) MKSH_A_PURE;
-int test_eval(Test_env *, Test_op, const char *, const char *, bool);
+Test_op	test_isop(Test_meta, const char *);
+int test_eval(Test_env *, Test_op, const char *, const char *, Wahr);
 int test_parse(Test_env *);
 
 /* tty_fd is not opened O_BINARY, it's thus never read/written */
 EXTERN int tty_fd E_INIT(-1);	/* dup'd tty file descriptor */
-EXTERN bool tty_devtty;		/* true if tty_fd is from /dev/tty */
+EXTERN Wahr tty_devtty;		/* if tty_fd is from /dev/tty */
 EXTERN mksh_ttyst tty_state;	/* saved tty state */
-EXTERN bool tty_hasstate;	/* true if tty_state is valid */
+EXTERN Wahr tty_hasstate;	/* if tty_state is valid */
 
 extern int tty_init_fd(void);	/* initialise tty_fd, tty_devtty */
 

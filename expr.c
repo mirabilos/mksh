@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.119 2022/01/28 07:01:12 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.121 2022/02/26 05:32:55 tg Exp $");
 
 #define EXPRTOK_DEFNS
 #include "exprtok.h"
@@ -81,9 +81,9 @@ typedef struct expr_state {
 	/* don't do assignments (for ?:, &&, ||) */
 	kby noassign;
 	/* evaluating an $(()) expression? */
-	bool arith;
+	Wahr arith;
 	/* unsigned arithmetic calculation */
-	bool natural;
+	Wahr natural;
 } Expr_state;
 
 enum error_type {
@@ -95,7 +95,7 @@ static void evalerr(Expr_state *, enum error_type, const char *)
     MKSH_A_NORETURN;
 static struct tbl *evalexpr(Expr_state *, unsigned int);
 static void exprtoken(Expr_state *);
-static struct tbl *do_ppmm(Expr_state *, enum token, struct tbl *, bool);
+static struct tbl *do_ppmm(Expr_state *, enum token, struct tbl *, Wahr);
 static void assign_check(Expr_state *, enum token, struct tbl *);
 static struct tbl *intvar(Expr_state *, struct tbl *);
 
@@ -103,7 +103,7 @@ static struct tbl *intvar(Expr_state *, struct tbl *);
  * parse and evaluate expression
  */
 int
-evaluate(const char *expr, mksh_ari_t *rval, int error_ok, bool arith)
+evaluate(const char *expr, mksh_ari_t *rval, int error_ok, Wahr arith)
 {
 	struct tbl v;
 	int ret;
@@ -120,7 +120,7 @@ evaluate(const char *expr, mksh_ari_t *rval, int error_ok, bool arith)
  */
 int
 v_evaluate(struct tbl *vp, const char *expr, volatile int error_ok,
-    bool arith)
+    Wahr arith)
 {
 	struct tbl *v;
 	Expr_state curstate;
@@ -145,7 +145,7 @@ v_evaluate(struct tbl *vp, const char *expr, volatile int error_ok,
 			/* error already printed */
 			/* (cf. syn.c for why) */
 			exstat = 1;
-			shl_stdout_ok = false;
+			shl_stdout_ok = Nee;
 			i = LERROR;
 		}
 		unwind(i);
@@ -181,7 +181,7 @@ evalerr(Expr_state *es, enum error_type type, const char *str)
 	char tbuf[2];
 	const char *s;
 
-	es->arith = false;
+	es->arith = Nee;
 	switch (type) {
 	case ET_UNEXPECTED:
 		switch (es->tok) {
@@ -241,7 +241,7 @@ evalerr(Expr_state *es, enum error_type type, const char *str)
 
 /* do a ++ or -- operation */
 static struct tbl *
-do_ppmm(Expr_state *es, enum token op, struct tbl *vasn, bool is_prefix)
+do_ppmm(Expr_state *es, enum token op, struct tbl *vasn, Wahr is_prefix)
 {
 	struct tbl *vl;
 	mksh_uari_t oval;
@@ -309,7 +309,7 @@ evalexpr(Expr_state *es, unsigned int prec)
 		case O_PLUSPLUS:
 		case O_MINUSMINUS:
 			exprtoken(es);
-			vl = do_ppmm(es, op, es->val, true);
+			vl = do_ppmm(es, op, es->val, Ja);
 			exprtoken(es);
 			break;
 
@@ -325,7 +325,7 @@ evalexpr(Expr_state *es, unsigned int prec)
 		}
 
 		if (es->tok == O_PLUSPLUS || es->tok == O_MINUSMINUS) {
-			vl = do_ppmm(es, es->tok, vl, false);
+			vl = do_ppmm(es, es->tok, vl, Nee);
 			exprtoken(es);
 		}
 
@@ -354,7 +354,7 @@ evalexpr(Expr_state *es, unsigned int prec)
 				assign_check(es, op, vasn);
 			vr = intvar(es, evalexpr(es, P_ASSIGN));
 		} else if (op == O_TERN) {
-			bool ev = vl->val.u != 0;
+			Wahr ev = vl->val.u != 0;
 
 			if (!ev)
 				es->noassign++;
@@ -376,14 +376,17 @@ evalexpr(Expr_state *es, unsigned int prec)
 			vr = intvar(es, evalexpr(es, prec - 1));
 
 		/* op calculation */
-#define cmpop(op)	(es->natural ?			\
-	(mksh_uari_t)(vl->val.u op vr->val.u) :		\
-	(mksh_uari_t)(vl->val.i op vr->val.i)		\
-)
 #ifndef MKSH_LEGACY_MODE
 #define ariop(op)	(vl->val.u op vr->val.u)
+#define cmpop(op)	(es->natural ?			\
+	(mksh_uari_t)(vl->val.u op vr->val.u) :		\
+	(mksh_uari_t)mbiKcmp(mksh_uari_t, KUA_HM,	\
+	    vl->val.u, op, vr->val.u))
 #else
-#define ariop(op)	cmpop(op)
+#define ariop(op)	(es->natural ?			\
+	(mksh_uari_t)(vl->val.u op vr->val.u) :		\
+	(mksh_uari_t)(vl->val.i op vr->val.i))
+#define cmpop(op)	ariop(op)
 #endif
 		switch ((int)op) {
 		case O_PLUS:
@@ -400,6 +403,20 @@ evalexpr(Expr_state *es, unsigned int prec)
 			break;
 		case O_DIV:
 		case O_DIVASN:
+			if (vr->val.i == 0) {
+				if (!es->noassign)
+					evalerr(es, ET_STR, "zero divisor");
+				res = vl->val.u; /* dummy value, could be 1 */
+				break;
+			}
+#ifndef MKSH_LEGACY_MODE
+			if (!es->natural)
+				res = mbiKdiv(mksh_uari_t, KUA_HM,
+				    vl->val.u, vr->val.u);
+			else
+#endif
+				res = ariop(/);
+			break;
 		case O_MOD:
 		case O_MODASN:
 			if (vr->val.i == 0) {
@@ -409,36 +426,27 @@ evalexpr(Expr_state *es, unsigned int prec)
 				break;
 			}
 #ifndef MKSH_LEGACY_MODE
-			if (!es->natural) {
-				mksh_uari_t u1, u2;
-
-				mbiVASdivrem(mksh_uari_t, mksh_ari_t,
-				    u1, u2, vl->val.i, vr->val.i);
-				if (op == O_DIV || op == O_DIVASN)
-					res = u1;
-				else
-					res = u2;
-			} else
-#endif
-			  if (op == O_DIV || op == O_DIVASN)
-				res = ariop(/);
+			if (!es->natural)
+				res = mbiKrem(mksh_uari_t, KUA_HM,
+				    vl->val.u, vr->val.u);
 			else
+#endif
 				res = ariop(%);
 			break;
 #ifndef MKSH_LEGACY_MODE
 		case O_ROL:
 		case O_ROLASN:
-			mbiVAUrol(mksh_uari_t, res, vl->val.u, vr->val.u);
+			res = mbiKrol(mksh_uari_t, vl->val.u, vr->val.u);
 			break;
 		case O_ROR:
 		case O_RORASN:
-			mbiVAUror(mksh_uari_t, res, vl->val.u, vr->val.u);
+			res = mbiKror(mksh_uari_t, vl->val.u, vr->val.u);
 			break;
 #endif
 		case O_LSHIFT:
 		case O_LSHIFTASN:
 #ifndef MKSH_LEGACY_MODE
-			mbiVAUshl(mksh_uari_t, res, vl->val.u, vr->val.u);
+			res = mbiKshl(mksh_uari_t, vl->val.u, vr->val.u);
 #else
 			res = ariop(<<);
 #endif
@@ -446,7 +454,7 @@ evalexpr(Expr_state *es, unsigned int prec)
 		case O_RSHIFT:
 		case O_RSHIFTASN:
 #ifndef MKSH_LEGACY_MODE
-			mbiVAUshr(mksh_uari_t, res,
+			res = mbiKsar(mksh_uari_t,
 			    !es->natural && vl->val.i < 0,
 			    vl->val.u, vr->val.u);
 #else
@@ -506,6 +514,7 @@ evalexpr(Expr_state *es, unsigned int prec)
 			res = vr->val.u;
 			break;
 		}
+#undef ariop
 #undef cmpop
 
 		if (IS_ASSIGNOP(op)) {
@@ -539,7 +548,7 @@ exprtoken(Expr_state *es)
 	if (es->tokp == es->expression && (unsigned int)c == ORD('#')) {
 		/* expression begins with # */
 		/* switch to unsigned */
-		es->natural = true;
+		es->natural = Ja;
 		++cp;
 		goto skip_spaces;
 	}
@@ -887,7 +896,7 @@ struct mb_ucsrange {
 };
 
 static int mb_ucsbsearch(const struct mb_ucsrange arr[], size_t elems,
-    unsigned int val) MKSH_A_PURE;
+    unsigned int val);
 
 /*
  * Generated from the UCD 13.0.0 - see /usr/share/doc/legal/LICENCE-BSD - by
