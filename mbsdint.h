@@ -5,9 +5,10 @@
  */
 
 #ifndef SYSKERN_MBSDINT_H
-#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.8 2022/03/02 23:51:12 tg Exp $"
+#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.11 2022/03/06 01:52:59 tg Exp $"
 
 /* if you have <sys/types.h> and/or <stdint.h>, include them before this */
+/* also if <limits.h> defines SSIZE_MAX or UINTPTR_MAX but not the types */
 
 #if !defined(_KERNEL) && !defined(_STANDALONE)
 #include <limits.h>
@@ -206,6 +207,15 @@ mbiCTAS(mbsdint_h) {
 #endif
 	mbiMASK_BITS(SSIZE_MAX) < mbiTYPE_UBITS(size_t));
 #endif
+#ifdef UINTPTR_MAX
+ mbiCTA(basic_uintptr,
+	sizeof(uintptr_t) >= sizeof(ptrdiff_t) &&
+	sizeof(uintptr_t) >= sizeof(size_t) &&
+	mbiTYPE_ISU(uintptr_t) && mbiMASK_CHK(UINTPTR_MAX) &&
+	mbiMASK_BITS(UINTPTR_MAX) == mbiTYPE_UBITS(uintptr_t) &&
+	((mbiHUGE_U)(UINTPTR_MAX) == (mbiHUGE_U)(uintptr_t)(UINTPTR_MAX)) &&
+	mbiTYPE_UBITS(uintptr_t) <= mbiMASK_BITS(mbiHUGE_UMAX));
+#endif
  /* C99 §6.2.6.2(1, 2, 6) permits M ≤ N, but M < N is normally desired */
  /* here require signed/unsigned types to have same width (M=N-1) */
  mbiCTA(vbits_char, mbiMASK_BITS(UCHAR_MAX) == mbiMASK_BITS(SCHAR_MAX) + 1U);
@@ -229,6 +239,10 @@ mbiCTAS(mbsdint_h) {
  mbiCTA(sizet_ptrdiff, sizeof(size_t) == sizeof(ptrdiff_t));
 #ifdef SSIZE_MAX
  mbiCTA(sizet_ssize, sizeof(size_t) == sizeof(ssize_t));
+#endif
+ /* also uintptr_t, to rule out certain weird machines */
+#ifdef UINTPTR_MAX
+ mbiCTA(sizet_uintptr, sizeof(size_t) == sizeof(uintptr_t));
 #endif
 };
 #endif /* !MBSDINT_H_SKIP_CTAS */
@@ -589,13 +603,11 @@ mbiCTAS(mbsdint_h) {
 #define mbiMKsar(ut,FM,vz,l,r)	mbiMK_sr(ut, (FM), mbiK_sar,  (l),  (r), (vz))
 #define mbiMKshr(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_sar, (vl), (vr), 0)
 /* implementation */
-#define mbiMK_sr(ut,FM,n,l,r,z)	mbiMM(ut, (FM), mbiK_sr(ut, n, \
-				    mbiMM(ut, (FM), (l)), (r), (z)))
-#define mbiK_sr(ut,n,vl,vr,vz)	mbiK_srI(ut, n, (vl), \
-				    mbiUI(vr) & (mbiTYPE_UBITS(ut) - 1U), \
-				    !(vz))
-#define mbiK_srI(ut,n,ax,cl,zx)	mbiOT(ut, (cl), n(ut, ax, (cl), \
-				    mbiTYPE_UBITS(ut) - (cl), zx), 0)
+#define mbiK_sr(ut,n,vl,vr,vz)	mbiK_SR(ut, mbiTYPE_UBITS(ut), n, vl, vr, vz)
+#define mbiMK_sr(ut,FM,n,l,r,z)	mbiMM(ut, (FM), mbiK_SR(ut, mbiMASK_BITS(FM), \
+				    n, mbiMM(ut, (FM), (l)), (r), (z)))
+#define mbiK_SR(ut,b,n,l,r,vz)	mbiK_RS(ut, b, n, l, mbiUI(r) & (b - 1U), !(vz))
+#define mbiK_RS(ut,b,n,v,cl,zx)	mbiOT(ut, cl, n(ut, v, cl, b - (cl), zx), 0)
 #define mbiK_shl(ut,ax,cl,CL,z)	mbiOshl(ut, ax, cl)
 #define mbiK_sar(ut,ax,cl,CL,z)	mbiOT(ut, z, mbiOshr(ut, ax, cl), \
 				    mbiOU1(ut, ~, mbiOshr(ut, \
