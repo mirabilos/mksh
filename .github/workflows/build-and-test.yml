@@ -15,7 +15,7 @@
           "uses": "actions/checkout@v3"
         },
         {
-          "run": "echo foo ${{ matrix.testlksh }} baz"
+          "run": "env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' dash Build.sh ${{ matrix.testlksh }} -r && script -qef -c './test.sh -e ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
