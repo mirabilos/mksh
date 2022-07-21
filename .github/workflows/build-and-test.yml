@@ -26,7 +26,7 @@
           "uses": "actions/checkout@v3"
         },
         {
-          "run": "echo foo ${{ matrix.testlksh }} bar"
+          "run": "env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && ./test.sh -f && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
