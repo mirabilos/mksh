@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.987 2022/04/22 02:04:41 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.989 2022/07/21 03:57:42 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -1058,7 +1058,8 @@ EXTERN struct {
 #define OF_ANY		(OF_CMDLINE | OF_SET | OF_INTERNAL)
 
 /* null value for variable; comparison pointer for unset */
-EXTERN char null[] E_INIT("");
+#define null (&null_string[2])
+extern char null_string[4];	/* backing, initialised */
 
 /* string pooling: do we rely on the compiler? */
 #ifndef HAVE_STRING_POOLING
@@ -2205,10 +2206,10 @@ typedef struct XString {
 #define Xput(xs,xp,c)	(*xp++ = (c))
 
 /* check if there are at least n bytes left */
-#define XcheckN(xs,xp,n) do {					\
-	ssize_t more = ((xp) + (n)) - (xs).end;			\
-	if (more > 0)						\
-		(xp) = Xcheck_grow(&(xs), (xp), (size_t)more);	\
+#define XcheckN(xs,xp,n) do {						\
+	ssize_t XcheckNi = (size_t)((xp) - (xs).beg) + (n) - (xs).len;	\
+	if (XcheckNi > 0)						\
+		(xp) = Xcheck_grow(&(xs), (xp), (size_t)XcheckNi);	\
 } while (/* CONSTCOND */ 0)
 
 /* check for overflow, expand string */
