@@ -26,7 +26,7 @@
           "uses": "actions/checkout@v3"
         },
         {
-          "run": "env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && ./test.sh -f && ./?ksh FAQ2HTML.sh && echo Alles gut."
+          "run": "env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && if script -qc true >/dev/null 2>&1; then script -q typescript ./test.sh -f; else script -qef -c './test.sh -f'; fi && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
