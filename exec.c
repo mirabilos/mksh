@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.238 2022/02/19 21:21:54 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.241 2022/07/22 00:19:15 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -491,8 +491,6 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	volatile int rv = 0;
 	const char *cp;
 	const char **lastp;
-	/* Must be static (XXX but why?) */
-	static struct op texec;
 	int type_flags;
 	Wahr resetspec;
 	int fcflags = FC_BI | FC_FUNC | FC_PATH;
@@ -500,6 +498,10 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 	int optc;
 	const char *exec_argv0 = NULL;
 	Wahr exec_clrenv = Nee;
+	volatile kui old_inuse;
+	const char * volatile old_kshname;
+	volatile kby old_flags[FNFLAGS];
+	static struct op texec; /* static for use by child process */
 
 	/* snag the last argument for $_ */
 	if (Flag(FTALKING) && *(lastp = ap)) {
@@ -703,11 +705,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 		break;
 
 	/* function call */
-	case CFUNC: {
-		volatile kui old_inuse;
-		const char * volatile old_kshname;
-		volatile kby old_flags[FNFLAGS];
-
+	case CFUNC:
 		if (!(tp->flag & ISSET)) {
 			struct tbl *ftp;
 
@@ -831,7 +829,6 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 			    Tunexpected_type, Tunwind, Tfunction, i);
 		}
 		break;
-	}
 
 	/* executable command */
 	case CEXEC:

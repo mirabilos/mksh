@@ -1,0 +1,66 @@
+{
+  "jobs": {
+    "bt-asan": {
+      "runs-on": "ubuntu-22.04",
+      "steps": [
+        {
+          "name": "Cancel previous runs",
+          "uses": "styfle/cancel-workflow-action@0.10.0",
+          "with": {
+            "access_token": "${{ github.token }}",
+            "all_but_latest": true
+          }
+        },
+        {
+          "uses": "actions/checkout@v3"
+        },
+        {
+          "run": "env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' dash Build.sh ${{ matrix.testlksh }} -r -g && script -qef -c './test.sh -e ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "testlksh": [
+            "",
+            "-L"
+          ]
+        }
+      }
+    },
+    "bt-normal": {
+      "runs-on": "${{ matrix.os }}",
+      "steps": [
+        {
+          "uses": "actions/checkout@v3"
+        },
+        {
+          "run": "env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi && ./?ksh FAQ2HTML.sh && echo Alles gut."
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "os": [
+            "ubuntu-22.04",
+            "macos-11",
+            "macos-12"
+          ],
+          "testlksh": [
+            "",
+            "-L"
+          ]
+        }
+      }
+    }
+  },
+  "name": "build-and-test",
+  "on": {
+    "push": {
+      "branches": [
+        "travis-ci"
+      ]
+    },
+    "workflow_dispatch": null
+  }
+}

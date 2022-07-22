@@ -3,7 +3,7 @@
 #-
 # Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #	      2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
-#	      2019, 2020, 2021
+#	      2019, 2020, 2021, 2022
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -5429,10 +5429,10 @@ expected-stdout:
 	36:36#1S.64.
 	37:64.64.
 ---
-name: integer-arithmetic-span
+name: integer-arithmetic-span-signed
 description:
 	Check wraparound and size that is defined in mksh
-category: int:32
+category: shell:legacy-no
 stdin:
 	echo s:$((2147483647+1)).$(((2147483647*2)+1)).$(((2147483647*2)+2)).
 	echo u:$((#2147483647+1)).$((#(2147483647*2)+1)).$((#(2147483647*2)+2)).
@@ -5440,15 +5440,22 @@ expected-stdout:
 	s:-2147483648.-1.0.
 	u:2147483648.4294967295.0.
 ---
+name: integer-arithmetic-span-32
+description:
+	Check unsigned wraparound and size that should also work in lksh
+category: int:32
+stdin:
+	echo u:$((#2147483647+1)).$((#(2147483647*2)+1)).$((#(2147483647*2)+2)).
+expected-stdout:
+	u:2147483648.4294967295.0.
+---
 name: integer-arithmetic-span-64
 description:
-	Check wraparound and size that is defined in mksh
+	Check unsigned wraparound and size that should also work in lksh
 category: int:64
 stdin:
-	echo s:$((9223372036854775807+1)).$(((9223372036854775807*2)+1)).$(((9223372036854775807*2)+2)).
 	echo u:$((#9223372036854775807+1)).$((#(9223372036854775807*2)+1)).$((#(9223372036854775807*2)+2)).
 expected-stdout:
-	s:-9223372036854775808.-1.0.
 	u:9223372036854775808.18446744073709551615.0.
 ---
 name: integer-size-FAIL-to-detect
@@ -14090,26 +14097,26 @@ stdin:
 		set +U
 		local c s="$*" t=
 		[[ -n $s ]] || { s=$(cat;print .); s=${s%.}; }
-		local -i i=0 n=${#s} p=0 v x
+		local -i i=-1 n=${#s} p=0 v x
 		local -i16 o
 	
-		while (( i < n )); do
-			c=${s:(i++):1}
+		while ((# ++i < n )); do
+			c=${s:i:1}
 			case $c {
 			(=)	break ;;
-			([A-Z])	(( v = 1#$c - 65 )) ;;
-			([a-z])	(( v = 1#$c - 71 )) ;;
-			([0-9])	(( v = 1#$c + 4 )) ;;
+			([A-Z])	((# v = 1#$c - 65 )) ;;
+			([a-z])	((# v = 1#$c - 71 )) ;;
+			([0-9])	((# v = 1#$c + 4 )) ;;
 			(+)	v=62 ;;
 			(/)	v=63 ;;
 			(*)	continue ;;
 			}
-			(( x = (x << 6) | v ))
+			((# x = (x << 6) | v ))
 			case $((p++)) {
 			(0)	continue ;;
-			(1)	(( o = (x >> 4) & 255 )) ;;
-			(2)	(( o = (x >> 2) & 255 )) ;;
-			(3)	(( o = x & 255 ))
+			(1)	((# o = (x >> 4) & 255 )) ;;
+			(2)	((# o = (x >> 2) & 255 )) ;;
+			(3)	((# o = x & 255 ))
 				p=0
 				;;
 			}
