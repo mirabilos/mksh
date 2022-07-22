@@ -5429,10 +5429,10 @@ expected-stdout:
 	36:36#1S.64.
 	37:64.64.
 ---
-name: integer-arithmetic-span
+name: integer-arithmetic-span-signed
 description:
 	Check wraparound and size that is defined in mksh
-category: int:32
+category: shell:legacy-no
 stdin:
 	echo s:$((2147483647+1)).$(((2147483647*2)+1)).$(((2147483647*2)+2)).
 	echo u:$((#2147483647+1)).$((#(2147483647*2)+1)).$((#(2147483647*2)+2)).
@@ -5440,15 +5440,22 @@ expected-stdout:
 	s:-2147483648.-1.0.
 	u:2147483648.4294967295.0.
 ---
+name: integer-arithmetic-span-32
+description:
+	Check unsigned wraparound and size that should also work in lksh
+category: int:32
+stdin:
+	echo u:$((#2147483647+1)).$((#(2147483647*2)+1)).$((#(2147483647*2)+2)).
+expected-stdout:
+	u:2147483648.4294967295.0.
+---
 name: integer-arithmetic-span-64
 description:
-	Check wraparound and size that is defined in mksh
+	Check unsigned wraparound and size that should also work in lksh
 category: int:64
 stdin:
-	echo s:$((9223372036854775807+1)).$(((9223372036854775807*2)+1)).$(((9223372036854775807*2)+2)).
 	echo u:$((#9223372036854775807+1)).$((#(9223372036854775807*2)+1)).$((#(9223372036854775807*2)+2)).
 expected-stdout:
-	s:-9223372036854775808.-1.0.
 	u:9223372036854775808.18446744073709551615.0.
 ---
 name: integer-size-FAIL-to-detect
