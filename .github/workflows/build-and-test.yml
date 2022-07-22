@@ -19,6 +19,7 @@
         }
       ],
       "strategy": {
+        "fail-fast": true,
         "matrix": {
           "testlksh": [
             "",
@@ -38,6 +39,7 @@
         }
       ],
       "strategy": {
+        "fail-fast": true,
         "matrix": {
           "os": [
             "ubuntu-22.04",
