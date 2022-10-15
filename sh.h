@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.989 2022/07/21 03:57:42 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.995 2022/10/05 23:42:53 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -38,10 +38,21 @@
 #undef MKSH_USE_AUTOCONF_H
 #endif
 
+#ifdef MKSH_FIXUP_struct_timeval
+#define _STRUCT_TIMEVAL /* for HP-UX 9 */
+#include <sys/types.h>	/* for time_t */
+struct timeval {
+	time_t	tv_sec;		/* HP-UX 9: ulong (time_t=long) */
+	long	tv_usec;
+};
+#endif
+
 #if HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
+#ifndef MKSH_FIXUP_struct_timeval
 #include <sys/types.h>
+#endif
 #if HAVE_BOTH_TIME_H && HAVE_SELECT_TIME_H
 #include <sys/time.h>
 #include <time.h>
@@ -201,7 +212,7 @@
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#define MKSH_VERSION "R59 2022/04/21"
+#define MKSH_VERSION "R59 2022/09/28"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -395,6 +406,7 @@ extern int ksh_getrusage(int, struct rusage *);
 #ifdef MAXPATHLEN
 #define PATH_MAX	MAXPATHLEN
 #else
+/*XXX wrong! pathconf(2) needs to be used instead */
 #define PATH_MAX	1024
 #endif
 #endif
@@ -771,7 +783,7 @@ im_sorry_dave(void)
 	char *strdup_dst = NULL;					\
 									\
 	if (strdup_src != NULL) {					\
-		size_t strdup_len = strlen(strdup_src) + 1;		\
+		size_t strdup_len = strlen(strdup_src) + 1U;		\
 		strdup_dst = alloc(strdup_len, (ap));			\
 		memcpy(strdup_dst, strdup_src, strdup_len);		\
 	}								\
@@ -783,7 +795,7 @@ im_sorry_dave(void)
 									\
 	if (strdup_src != NULL) {					\
 		size_t strndup_len = (n);				\
-		strdup_dst = alloc(strndup_len + 1, (ap));		\
+		strdup_dst = alloc(strndup_len + 1U, (ap));		\
 		memcpy(strdup_dst, strdup_src, strndup_len);		\
 		strdup_dst[strndup_len] = '\0';				\
 	}								\
@@ -797,7 +809,7 @@ im_sorry_dave(void)
 	if (strdup_src != NULL) {					\
 		size_t strndup_len = (n);				\
 		strdup_dst = strndup_len < sizeof(b) ? (b) :		\
-		    alloc(strndup_len + 1, (ap));			\
+		    alloc(strndup_len + 1U, (ap));			\
 		memcpy(strdup_dst, strdup_src, strndup_len);		\
 		strdup_dst[strndup_len] = '\0';				\
 	}								\
@@ -807,8 +819,8 @@ im_sorry_dave(void)
 	const char *strdup_src = (const void *)(s1);			\
 	const char *strdup_app = (const void *)(s2);			\
 	size_t strndup_len = strlen(strdup_src);			\
-	size_t strndup_ln2 = strlen(strdup_app) + 1;			\
-	char *strdup_dst = alloc(strndup_len + strndup_ln2, ATEMP);	\
+	size_t strndup_ln2 = strlen(strdup_app) + 1U;			\
+	char *strdup_dst = alloc1(strndup_len, strndup_ln2, ATEMP);	\
 									\
 	memcpy(strdup_dst, strdup_src, strndup_len);			\
 	memcpy(strdup_dst + strndup_len, strdup_app, strndup_ln2);	\
@@ -817,14 +829,14 @@ im_sorry_dave(void)
 #define strpathx(d,s1,s2,cond) do {					\
 	const char *strdup_src = (const void *)(s1);			\
 	const char *strdup_app = (const void *)(s2);			\
-	size_t strndup_len = strlen(strdup_src) + 1;			\
+	size_t strndup_len = strlen(strdup_src) + 1U;			\
 	size_t strndup_ln2 = ((cond) || *strdup_app) ?			\
-	    strlen(strdup_app) + 1 : 0;					\
-	char *strdup_dst = alloc(strndup_len + strndup_ln2, ATEMP);	\
+	    strlen(strdup_app) + 1U : 0;				\
+	char *strdup_dst = alloc1(strndup_len, strndup_ln2, ATEMP);	\
 									\
 	memcpy(strdup_dst, strdup_src, strndup_len);			\
 	if (strndup_ln2) {						\
-		strdup_dst[strndup_len - 1] = '/';			\
+		strdup_dst[strndup_len - 1U] = '/';			\
 		memcpy(strdup_dst + strndup_len, strdup_app,		\
 		    strndup_ln2);					\
 	}								\
@@ -2495,8 +2507,10 @@ void ainit(Area *);
 void afreeall(Area *);
 /* these cannot fail and can take NULL (not for ap) */
 #define alloc(n,ap)		aresize(NULL, (n), (ap))
+#define alloc1(m,n,ap)		aresize1(NULL, (m), (n), (ap))
 #define alloc2(m,n,ap)		aresize2(NULL, (m), (n), (ap))
 void *aresize(void *, size_t, Area *);
+void *aresize1(void *, size_t, size_t, Area *);
 void *aresize2(void *, size_t, size_t, Area *);
 void afree(void *, Area *);	/* can take NULL */
 #define aresizeif(z,p,n,ap)	(((p) == NULL) || ((z) < (n)) || \
@@ -3044,7 +3058,7 @@ extern int tty_init_fd(void);	/* initialise tty_fd, tty_devtty */
 
 #ifdef __OS2__
 #define binopen2(path,flags)		__extension__({			\
-	int binopen2_fd = open((path), (flags) | O_BINARY);		\
+	int binopen2_fd = open((path), (flags) | O_BINARY, 0);		\
 	if (binopen2_fd >= 0)						\
 		setmode(binopen2_fd, O_BINARY);				\
 	(binopen2_fd);							\
@@ -3056,7 +3070,7 @@ extern int tty_init_fd(void);	/* initialise tty_fd, tty_devtty */
 	(binopen3_fd);							\
 })
 #else
-#define binopen2(path,flags)		open((path), (flags) | O_BINARY)
+#define binopen2(path,flags)		open((path), (flags) | O_BINARY, 0)
 #define binopen3(path,flags,mode)	open((path), (flags) | O_BINARY, (mode))
 #endif
 

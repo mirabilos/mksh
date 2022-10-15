@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.828 2022/07/21 00:37:13 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.832 2022/10/15 21:36:35 tg Exp $'
 set +evx
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -221,7 +221,8 @@ do_genopt() {
 	done | {
 		echo "$o_hdr"
 		echo "#ifndef $o_sym$o_gen"
-		echo "#else"
+		echo "#endif"
+		echo "#ifdef $o_sym"
 		cat
 		echo "#undef $o_sym"
 		echo "#endif"
@@ -827,7 +828,7 @@ NEXTSTEP)
 	    grep 'NeXT Mach [0-9][0-9.]*:' | \
 	    sed 's/^.*NeXT Mach \([0-9][0-9.]*\):.*$/\1/'`
 	;;
-BeOS|QNX|SCO_SV)
+BeOS|HP-UX|QNX|SCO_SV)
 	test_n "$TARGET_OSREV" || TARGET_OSREV=`uname -r`
 	;;
 esac
@@ -958,6 +959,14 @@ Harvey)
 	: "${HAVE_CAN_FSTACKPROTECTORSTRONG=0}"
 	;;
 HP-UX)
+	case $TARGET_OSREV in
+	B.09.*)
+		: "${CC=c89}"
+		add_cppflags -D_HPUX_SOURCE
+		cpp_define MKSH_FIXUP_struct_timeval 1
+		cpp_define MBSDINT_H_SMALL_SYSTEM 1
+		;;
+	esac
 	;;
 Interix)
 	ccpc='-X '
@@ -1421,10 +1430,9 @@ bcc)
 	;;
 clang)
 	# does not work with current "ccc" compiler driver
-	vv '|' "$CC $CFLAGS $Cg $CPPFLAGS $LDFLAGS $NOWARN $LIBS -version"
+	vv '|' "$CC $CFLAGS $Cg $CPPFLAGS $LDFLAGS $NOWARN $LIBS --version"
 	# one of these two works, for now
 	vv '|' "${CLANG-clang} -version"
-	vv '|' "${CLANG-clang} --version"
 	# ensure compiler and linker are in sync unless overridden
 	case $CCC_CC:$CCC_LD in
 	:*)	;;
@@ -1458,6 +1466,11 @@ gcc)
 	;;
 hpcc)
 	vv '|' "$CC $CFLAGS $Cg $CPPFLAGS $LDFLAGS $NOWARN -V conftest.c $LIBS"
+	case $TARGET_OS,$TARGET_OSREV in
+	HP-UX,B.09.*)
+		: "${HAVE_ATTRIBUTE_EXTENSION=0}"
+		;;
+	esac
 	;;
 iar)
 	echo >&2 'Warning: IAR Systems (http://www.iar.com) compiler for embedded
