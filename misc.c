@@ -33,7 +33,7 @@
 #include <grp.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.349 2022/07/21 01:49:32 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/misc.c,v 1.351 2022/09/12 23:53:47 tg Exp $");
 
 static const unsigned char *pat_scan(const unsigned char *,
     const unsigned char *, Wahr);
@@ -2416,14 +2416,12 @@ c_cd(const char **wp)
 		/*-
 		 * ilen = part of current_wd before wp[0]
 		 * elen = part of current_wd after wp[0]
-		 * because current_wd and wp[1] need to be in memory at the
-		 * same time beforehand the addition can stay unchecked
 		 */
 		ilen = cp - current_wd;
 		olen = strlen(wp[0]);
 		nlen = strlen(wp[1]);
 		elen = strlen(current_wd + ilen + olen) + 1;
-		dir = allocd = alloc(ilen + nlen + elen, ATEMP);
+		dir = allocd = alloc1(ilen + elen, nlen, ATEMP);
 		memcpy(dir, current_wd, ilen);
 		memcpy(dir + ilen, wp[1], nlen);
 		memcpy(dir + ilen + nlen, current_wd + ilen + olen, elen);
@@ -2629,8 +2627,10 @@ chvt(const Getopt *go)
 #endif
 				if (WIFSIGNALED(status)) {
 					status = WTERMSIG(status);
-					dv = status > 0 && status < ksh_NSIG ?
-					    ksh_sigmess(status) : NULL;
+					if (status > 0 && status < ksh_NSIG)
+						dv = ksh_sigmess(status);
+					else
+						dv = NULL;
 					if (ksh_sigmessf(dv))
 						dv = "Signalled";
 					kwarnf(KWF_PREFIX | KWF_TWOMSG |

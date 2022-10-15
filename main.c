@@ -33,7 +33,7 @@
 #include <langinfo.h>
 #endif
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.414 2022/03/02 23:51:11 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.416 2022/09/12 23:53:46 tg Exp $");
 __IDSTRING(mbsdint_h_rcsid, SYSKERN_MBSDINT_H);
 __IDSTRING(sh_h_rcsid, MKSH_SH_H_ID);
 
@@ -125,12 +125,18 @@ mbiCTA(short_is_2_char, sizeof(short) == 2);
 /* the next assertion is probably not really needed */
 mbiCTA(int_is_4_char, sizeof(int) == 4);
 
+#ifdef MKSH_FIXUP_struct_timeval
+/* HP-UX 9 */
+mbiCTA(timet_fixup_size_ok, sizeof(time_t) == sizeof(unsigned long));
+#endif
+
 #ifndef MKSH_LEGACY_MODE
+mbiCTA_TYPE_MBIT(sari, mksh_ari_t);
+mbiCTA_TYPE_MBIT(uari, mksh_uari_t);
+mbiCTA(basic_int32_smask, mbiMASK_CHK(INT32_MAX));
+mbiCTA(basic_int32_umask, mbiMASK_CHK(UINT32_MAX));
 mbiCTA(basic_int32_ari,
     mbiTYPE_UMAX(mksh_uari_t) == (UINT32_MAX) &&
-    sizeof(mksh_ari_t) <= (279 / CHAR_BIT) &&
-    sizeof(mksh_uari_t) <= (279 / CHAR_BIT) &&
-    mbiMASK_CHK(INT32_MAX) && mbiMASK_CHK(UINT32_MAX) &&
     /* require two’s complement */
     ((INT32_MIN) == -(INT32_MAX)-1));
 /* the next assertion is probably not really needed */
@@ -1631,8 +1637,7 @@ maketemp(Area *ap, Temp_type type, struct temp **tlist)
 	dir = tmpdir ? tmpdir : MKSH_DEFAULT_TMPDIR;
 	/* add "/shXXXXXX.tmp" plus NUL */
 	len = strlen(dir);
-	checkoktoadd(len, offsetof(struct temp, tffn[0]) + 14U);
-	cp = alloc(offsetof(struct temp, tffn[0]) + 14U + len, ap);
+	cp = alloc1(offsetof(struct temp, tffn[0]) + 14U, len, ap);
 
 	tp = (void *)cp;
 	tp->shf = NULL;
@@ -1802,9 +1807,8 @@ ktenter(struct table *tp, const char *n, k32 h)
 	}
 
 	/* create new tbl entry */
-	len = strlen(n);
-	checkoktoadd(len, offsetof(struct tbl, name[0]) + 1U);
-	p = alloc(offsetof(struct tbl, name[0]) + ++len, tp->areap);
+	len = strlen(n) + 1;
+	p = alloc1(offsetof(struct tbl, name[0]), len, tp->areap);
 	p->flag = 0;
 	p->type = 0;
 	p->areap = tp->areap;
