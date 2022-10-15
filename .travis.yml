@@ -10,14 +10,24 @@
             ]
           }
         },
+        "arch": [
+          "amd64",
+          "arm64",
+          "ppc64le",
+          "s390x"
+        ],
         "compiler": "gcc",
-        "dist": "focal",
+        "dist": "jammy",
         "os": "linux"
       },
       {
         "compiler": "clang",
         "os": "osx",
-        "osx_image": "xcode13.2"
+        "osx_image": [
+          "xcode13.4",
+          "xcode12.2",
+          "xcode7.3"
+        ]
       },
       {
         "compiler": "clang",
