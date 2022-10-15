@@ -10,12 +10,46 @@
             ]
           }
         },
-        "arch": [
-          "amd64",
-          "arm64",
-          "ppc64le",
-          "s390x"
-        ],
+        "arch": "amd64",
+        "compiler": "gcc",
+        "dist": "jammy",
+        "os": "linux"
+      },
+      {
+        "addons": {
+          "apt": {
+            "packages": [
+              "ed"
+            ]
+          }
+        },
+        "arch": "arm64",
+        "compiler": "gcc",
+        "dist": "jammy",
+        "os": "linux"
+      },
+      {
+        "addons": {
+          "apt": {
+            "packages": [
+              "ed"
+            ]
+          }
+        },
+        "arch": "ppc64le",
+        "compiler": "gcc",
+        "dist": "jammy",
+        "os": "linux"
+      },
+      {
+        "addons": {
+          "apt": {
+            "packages": [
+              "ed"
+            ]
+          }
+        },
+        "arch": "s390x",
         "compiler": "gcc",
         "dist": "jammy",
         "os": "linux"
@@ -23,11 +57,17 @@
       {
         "compiler": "clang",
         "os": "osx",
-        "osx_image": [
-          "xcode13.4",
-          "xcode12.2",
-          "xcode7.3"
-        ]
+        "osx_image": "xcode7.3"
+      },
+      {
+        "compiler": "clang",
+        "os": "osx",
+        "osx_image": "xcode12.2"
+      },
+      {
+        "compiler": "clang",
+        "os": "osx",
+        "osx_image": "xcode13.4"
       },
       {
         "compiler": "clang",
