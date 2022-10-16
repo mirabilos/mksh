@@ -63,7 +63,7 @@
           "uses": "jirutka/setup-alpine@v1",
           "with": {
             "branch": "edge",
-            "packages": "build-base ed perl yash"
+            "packages": "build-base ed perl util-linux yash"
           }
         },
         {
