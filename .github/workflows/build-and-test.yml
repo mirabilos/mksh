@@ -93,6 +93,7 @@
         {
           "uses": "vmactions/dragonflybsd-vm@v0",
           "with": {
+            "prepare": "pkg install -y perl5",
             "run": "tryshell=sh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi; ./?ksh ../../FAQ2HTML.sh; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
             "usesh": true
           }
