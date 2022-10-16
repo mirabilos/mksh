@@ -113,7 +113,7 @@
           "uses": "vmactions/netbsd-vm@v0",
           "with": {
             "prepare": "pkg_add perl",
-            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; (script -qf -c './test.sh -f; echo $? >test.res'; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
+            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; echo >test.wait; (script -qf -c './test.sh -f; echo $? >test.res; sleep 1; rm -f test.wait'; maxwait=0; while test -e test.wait; do sleep 1; maxwait=$(expr $maxwait + 1); test $maxwait -lt 900 || break; done; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
             "usesh": true
           }
         }
@@ -131,7 +131,7 @@
         {
           "uses": "vmactions/openbsd-vm@v0",
           "with": {
-            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; (script -c './test.sh -f; echo $? >test.res'; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
+            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; echo >test.wait; (script -c './test.sh -f; echo $? >test.res; sleep 1; rm -f test.wait'; maxwait=0; while test -e test.wait; do sleep 1; maxwait=$(expr $maxwait + 1); test $maxwait -lt 900 || break; done; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
             "usesh": true
           }
         }
