@@ -1,16 +1,12 @@
 {
   "jobs": {
     "analyse": {
-      "name": "Analyse",
       "permissions": {
         "actions": "read",
         "contents": "read",
         "security-events": "write"
       },
-      "runs-on": [
-        "ubuntu-latest",
-        "macos-latest"
-      ],
+      "runs-on": "${{ matrix.os }}",
       "steps": [
         {
           "name": "Cancel previous runs",
@@ -21,18 +17,20 @@
           }
         },
         {
-          "name": "Checkout repository",
           "uses": "actions/checkout@v3"
         },
         {
-          "name": "Initialize CodeQL",
+          "run": "(git gc || :)"
+        },
+        {
+          "name": "Initialise CodeQL",
           "uses": "github/codeql-action/init@v2",
           "with": {
             "languages": "cpp"
           }
         },
         {
-          "run": "sh Build.sh -r && ./test.sh -f"
+          "run": "tryshell=bash; nextshell=dash; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi; ./?ksh ../../FAQ2HTML.sh; tryshell=$nextshell; flag=-L; done; echo Alles gut."
         },
         {
           "name": "Perform CodeQL Analysis",
@@ -40,7 +38,13 @@
         }
       ],
       "strategy": {
-        "fail-fast": true
+        "fail-fast": true,
+        "matrix": {
+          "os": [
+            "ubuntu-latest",
+            "macos-latest"
+          ]
+        }
       }
     }
   },
