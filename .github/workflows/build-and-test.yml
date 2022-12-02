@@ -101,6 +101,7 @@
       ]
     },
     "vm-nbsd": {
+      "if": "${{ false }}",
       "runs-on": "macos-12",
       "steps": [
         {
@@ -120,6 +121,7 @@
       ]
     },
     "vm-obsd": {
+      "if": "${{ false }}",
       "runs-on": "macos-12",
       "steps": [
         {
