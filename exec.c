@@ -3,7 +3,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *		 2019, 2020, 2021, 2022
+ *		 2019, 2020, 2021, 2022, 2023
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.242 2022/12/18 03:20:03 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.245 2023/01/09 18:58:35 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"
@@ -331,9 +331,12 @@ execute(struct op * volatile t,
 	case TSELECT: {
 		volatile Wahr is_first = Ja;
 
-		ap = (t->vars == NULL) ? e->loc->argv + 1 :
-		    (const char **)eval((const char **)t->vars,
-		    DOBLANK | DOGLOB | DOTILDE);
+		if (t->vars == NULL)
+			/* “for i; do” */
+			ap = cpyargv(NULL, e->loc->argv, ATEMP) + 1;
+		else
+			ap = (const char **)eval((const char **)t->vars,
+			    DOBLANK | DOGLOB | DOTILDE);
 		e->type = E_LOOP;
 		while ((i = kshsetjmp(e->jbuf))) {
 			if ((e->flags&EF_BRKCONT_PASS) ||
@@ -727,7 +730,7 @@ comexec(struct op *t, struct tbl * volatile tp, const char **ap,
 				break;
 			}
 			errno = 0;
-			if (include(tp->u.fpath, 0, NULL, Nee) < 0 ||
+			if (include(tp->u.fpath, NULL, Nee) < 0 ||
 			    !(ftp = findfunc(cp, hash(cp), Nee)) ||
 			    !(ftp->flag & ISSET)) {
 				rv = errno;
@@ -1894,4 +1897,31 @@ dbteste_error(Test_env *te, int offset, const char *msg)
 	te->flags |= TEF_ERROR;
 	kwarnf0(KWF_INTERNAL | KWF_WARNING | KWF_NOERRNO,
 	    "dbteste_error: %s (offset %d)", msg, offset);
+}
+
+const char **
+cpyargv(int *i, const char **src, Area *ap)
+{
+	size_t n;
+	const char **wp, **dst;
+
+	wp = src - 1;
+	while (*++wp != NULL)
+		/* nothing */;
+	n = wp - src;
+	if (n < 1 || notoktoadd(n, 1) ||
+	    notok2add((size_t)INT_MAX, n, 1))
+		kerrf(KWF_VERRNO | KWF_INTERNAL | KWF_ERR(0xFF) |
+		    KWF_PREFIX | KWF_FILELINE | KWF_ONEMSG,
+		    EOVERFLOW, "cpyargv");
+	if (i)
+		*i = n - /* kshname */ 1U;
+	dst = alloc2(n + /* NULL */ 1U, sizeof(const char *), ap);
+
+	wp = dst;
+	*wp++ = *src++;
+	while (--n)
+		strdupx(*wp++, *src++, ap);
+	*wp = NULL;
+	return (dst);
 }

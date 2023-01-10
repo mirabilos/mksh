@@ -25,18 +25,7 @@
 #include "sh.h"
 #include "mirhash.h"
 
-#if defined(__OpenBSD__)
-#include <sys/sysctl.h>
-#endif
-
-#if HAVE_SYS_PTEM_H
-/* prerequisite */
-#include <sys/stream.h>
-/* struct winsize */
-#include <sys/ptem.h>
-#endif
-
-__RCSID("$MirOS: src/bin/mksh/var.c,v 1.267 2022/09/12 23:53:49 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/var.c,v 1.269 2023/01/08 21:06:30 tg Exp $");
 
 /*-
  * Variables
@@ -85,7 +74,7 @@ void
 newblock(void)
 {
 	struct block *l;
-	static const char *empty[] = { null };
+	static const char *empty[] = { null, NULL };
 
 	l = alloc(sizeof(struct block), ATEMP);
 	l->flags = 0;

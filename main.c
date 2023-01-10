@@ -6,7 +6,7 @@
 /*-
  * Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *		 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *		 2019, 2020, 2021, 2022
+ *		 2019, 2020, 2021, 2022, 2023
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -28,12 +28,7 @@
 #define EXTERN
 #include "sh.h"
 
-#if HAVE_POSIX_UTF8_LOCALE
-#include <locale.h>
-#include <langinfo.h>
-#endif
-
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.418 2022/12/18 03:20:05 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.422 2023/01/08 22:52:05 tg Exp $");
 __IDSTRING(mbsdint_h_rcsid, SYSKERN_MBSDINT_H);
 __IDSTRING(sh_h_rcsid, MKSH_SH_H_ID);
 
@@ -54,7 +49,7 @@ __IDSTRING(sh_h_rcsid, MKSH_SH_H_ID);
 #endif
 #endif
 
-static int main_init(int, const char *[], Source **, struct block **);
+static int main_init(int, const char *[], Source **);
 void chvt_reinit(void);
 static void reclaim(void);
 static void remove_temps(struct temp *);
@@ -268,11 +263,10 @@ kshname_islogin(const char **kshbasenamep)
 
 /* pre-initio() */
 static int
-main_init(int argc, const char *argv[], Source **sp, struct block **lp)
+main_init(int argc, const char *argv[], Source **sp)
 {
-	int argi = 0, i;
+	int argi = 1, i;
 	Source *s = NULL;
-	struct block *l;
 	unsigned char restricted_shell = 0, errexit, utf_flag;
 	char *cp;
 	const char *ccp, **wp;
@@ -631,23 +625,20 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	    SS_RESTORE_ORIG|SS_FORCE|SS_SHTRAP);
 #endif
 
-	l = e->loc;
-	if (as_builtin) {
-		l->argc = argc;
-		l->argv = argv;
-		l->argv[0] = ccp;
-	} else {
-		l->argc = argc - argi;
-		/*
-		 * allocate a new array because otherwise, when we modify
-		 * it in-place, ps(1) output changes; the meaning of argc
-		 * here is slightly different as it excludes kshname, and
-		 * we add a trailing NULL sentinel as well
-		 */
-		l->argv = alloc2(l->argc + 2, sizeof(void *), APERM);
-		l->argv[0] = kshname;
-		memcpy(&l->argv[1], &argv[argi], l->argc * sizeof(void *));
-		l->argv[l->argc + 1] = NULL;
+	/*
+	 * allocate a new array because otherwise, when we modify
+	 * it in-place, ps(1) output changes; the meaning of argc
+	 * here is slightly different as it excludes kshname, and
+	 * we add a trailing NULL sentinel as well
+	 */
+	e->loc->argc = argc - argi;
+	e->loc->argv = alloc2(e->loc->argc + 2, sizeof(char *), APERM);
+	memcpy(&e->loc->argv[1], &argv[argi], e->loc->argc * sizeof(char *));
+	e->loc->argv[e->loc->argc + 1] = NULL;
+	if (as_builtin)
+		e->loc->argv[0] = ccp;
+	else {
+		e->loc->argv[0] = kshname;
 		getopts_reset(1);
 	}
 
@@ -735,9 +726,9 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		    "can't determine current directory");
 
 	if (Flag(FLOGIN))
-		include(MKSH_SYSTEM_PROFILE, 0, NULL, Ja);
+		include(MKSH_SYSTEM_PROFILE, NULL, Ja);
 	if (Flag(FPRIVILEGED)) {
-		include(MKSH_SUID_PROFILE, 0, NULL, Ja);
+		include(MKSH_SUID_PROFILE, NULL, Ja);
 		/* note whether -p was enabled during startup */
 		if (Flag(FPRIVILEGED) == 1)
 			/* allow set -p to setuid() later */
@@ -749,11 +740,11 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 		baseline_flags[(int)FPRIVILEGED] = Flag(FPRIVILEGED);
 	} else {
 		if (Flag(FLOGIN))
-			include(substitute("$HOME/.profile", 0), 0, NULL, Ja);
+			include(substitute("$HOME/.profile", 0), NULL, Ja);
 		if (Flag(FTALKING)) {
 			cp = substitute("${ENV:-" MKSHRC_PATH "}", DOTILDE);
 			if (cp[0] != '\0')
-				include(cp, 0, NULL, Ja);
+				include(cp, NULL, Ja);
 		}
 	}
 	if (restricted_shell) {
@@ -778,7 +769,6 @@ main_init(int argc, const char *argv[], Source **sp, struct block **lp)
 	alarm_init();
 
 	*sp = s;
-	*lp = l;
 	return (0);
 }
 
@@ -789,11 +779,10 @@ main(int argc, const char *argv[])
 {
 	int rv;
 	Source *s;
-	struct block *l;
 
-	if ((rv = main_init(argc, argv, &s, &l)) == 0) {
+	if ((rv = main_init(argc, argv, &s)) == 0) {
 		if (as_builtin) {
-			rv = c_builtin(l->argv);
+			rv = c_builtin(e->loc->argv);
 			exstat = rv & 0xFF;
 			unwind(LEXIT);
 			/* NOTREACHED */
@@ -806,7 +795,7 @@ main(int argc, const char *argv[])
 }
 
 int
-include(const char *name, int argc, const char **argv, Wahr intr_ok)
+include(const char *name, const char **argv, Wahr intr_ok)
 {
 	Source *volatile s = NULL;
 	struct shf *shf;
@@ -859,7 +848,9 @@ include(const char *name, int argc, const char **argv, Wahr intr_ok)
 	}
 	if (argv) {
 		e->loc->argv = argv;
-		e->loc->argc = argc;
+		e->loc->argc = 0;
+		while (argv[e->loc->argc])
+			++e->loc->argc;
 	}
 	s = pushs(SFILE, ATEMP);
 	s->u.shf = shf;

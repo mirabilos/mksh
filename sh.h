@@ -11,7 +11,7 @@
 /*-
  * Copyright © 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
  *	       2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018,
- *	       2019, 2020, 2021, 2022
+ *	       2019, 2020, 2021, 2022, 2023
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.998 2022/12/18 03:20:06 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.1002 2023/01/08 22:53:22 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -50,8 +50,14 @@
 #elif HAVE_TIME_H
 #include <time.h>
 #endif
+#if HAVE_SYS_BSDTYPES_H
+#include <sys/bsdtypes.h>
+#endif
 #if HAVE_SYS_SELECT_H
 #include <sys/select.h>
+#endif
+#if HAVE_SYS_FILE_H
+#include <sys/file.h>
 #endif
 #include <sys/ioctl.h>
 #if HAVE_SYS_SYSMACROS_H
@@ -63,17 +69,32 @@
 #if HAVE_SYS_MMAN_H
 #include <sys/mman.h>
 #endif
+#if HAVE_SYS_PTEM_H
+/* prerequisite */
+#include <sys/stream.h>
+/* struct winsize */
+#include <sys/ptem.h>
+#endif
 #if HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
 #include <sys/stat.h>
+#if !HAVE_GETRUSAGE
+#include <sys/times.h>
+#endif
 #include <sys/wait.h>
 #ifdef DEBUG
 #include <assert.h>
 #endif
+#if HAVE_SELECT && HAVE_BSTRING_H
+#include <bstring.h>
+#endif
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#if HAVE_GRP_H
+#include <grp.h>
+#endif
 #if HAVE_IO_H
 #include <io.h>
 #endif
@@ -84,8 +105,17 @@
 #include <libutil.h>
 #endif
 #include <limits.h>
+#if defined(MKSH_EBCDIC) || defined(MKSH_FAUX_EBCDIC) || HAVE_POSIX_UTF8_LOCALE
+#include <locale.h>
+#if HAVE_POSIX_UTF8_LOCALE
+#include <langinfo.h>
+#endif
+#endif
 #if HAVE_PATHS_H
 #include <paths.h>
+#endif
+#ifdef MKSH_POLL_FOR_PAUSE
+#include <poll.h>
 #endif
 #ifndef MKSH_NOPWNAM
 #include <pwd.h>
@@ -128,6 +158,10 @@
 #define MBSDINT_H_SKIP_CTAS
 #endif
 #include "mbsdint.h"
+
+/* monkey-patch nil pointer constant */
+#undef NULL
+#define NULL mbi_nil
 
 /* monkey-patch known-bad offsetof versions to quell a warning */
 #if (defined(__KLIBC__) || defined(__dietlibc__)) && \
@@ -201,7 +235,7 @@
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#define MKSH_VERSION "R59 2022/12/18"
+#define MKSH_VERSION "R59 2023/01/08"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -2521,6 +2555,7 @@ const char *search_path(const char *, const char *, int, int *);
 void pr_menu(const char * const *);
 void pr_list(struct columnise_opts *, char * const *);
 int herein(struct ioword *, char **);
+const char **cpyargv(int *, const char **, Area *);
 /* expr.c */
 int evaluate(const char *, mksh_ari_t *, int, Wahr);
 int v_evaluate(struct tbl *, const char *, volatile int, Wahr);
@@ -2661,7 +2696,7 @@ void set_prompt(int, Source *);
 int pprompt(const char *, int);
 /* main.c */
 kby kshname_islogin(const char **);
-int include(const char *, int, const char **, Wahr);
+int include(const char *, const char **, Wahr);
 int command(const char *, int);
 int shell(Source * volatile, volatile int);
 /* argument MUST NOT be 0 */

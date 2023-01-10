@@ -5,7 +5,7 @@
 /*-
  * Copyright (c) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
  *		 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017,
- *		 2019, 2020, 2021, 2022
+ *		 2019, 2020, 2021, 2022, 2023
  *	mirabilos <m@mirbsd.org>
  *
  * Provided that these terms and disclaimer and all copyright notices
@@ -26,16 +26,7 @@
 
 #include "sh.h"
 
-#if HAVE_SELECT
-#if HAVE_SYS_BSDTYPES_H
-#include <sys/bsdtypes.h>
-#endif
-#if HAVE_BSTRING_H
-#include <bstring.h>
-#endif
-#endif
-
-__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.408 2022/12/24 01:49:00 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/funcs.c,v 1.411 2023/01/08 22:53:21 tg Exp $");
 
 #if HAVE_KILLPG
 /*
@@ -1510,7 +1501,7 @@ int
 c_dot(const char **wp)
 {
 	const char *file, *cp, **argv;
-	int argc, rv, errcode;
+	int rv, errcode;
 
 	if (ksh_getopt(wp, &builtin_opt, null) == '?')
 		return (1);
@@ -1533,15 +1524,11 @@ c_dot(const char **wp)
 		argv = wp + builtin_opt.optind;
 		/* preserve $0 */
 		argv[0] = e->loc->argv[0];
-		for (argc = 0; argv[argc + 1]; argc++)
-			;
-	} else {
-		argc = 0;
+	} else
 		argv = NULL;
-	}
 	/* SUSv4: OR with a high value never written otherwise */
 	exstat |= 0x4000;
-	if ((rv = include(file, argc, argv, Nee)) < 0) {
+	if ((rv = include(file, argv, Nee)) < 0) {
 		/* should not happen */
 		bi_errorf(Tf_sD_s, cp, cstrerror(errno));
 		return (1);
@@ -2251,18 +2238,10 @@ c_set(const char **wp)
 		return (2);
 	/* set $# and $* */
 	if (setargs) {
-		const char **owp;
-
 		wp += argi - 1;
-		owp = wp;
 		/* save $0 */
 		wp[0] = l->argv[0];
-		while (*++wp != NULL)
-			strdupx(*wp, *wp, &l->area);
-		l->argc = wp - owp - 1;
-		l->argv = alloc2(l->argc + 2, sizeof(char *), &l->area);
-		for (wp = l->argv; (*wp++ = *owp++) != NULL; )
-			;
+		l->argv = cpyargv(&l->argc, wp, &l->area);
 	}
 	/*-
 	 * POSIX says set exit status is 0, but old scripts that use
