@@ -4,13 +4,13 @@
       "runs-on": "macos-12",
       "steps": [
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
         },
         {
-          "uses": "vmactions/openbsd-vm@v0",
+          "uses": "vmactions/openbsd-vm@v0.1.1",
           "with": {
             "copyback": false,
             "mem": 2048,

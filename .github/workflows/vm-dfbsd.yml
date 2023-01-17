@@ -4,13 +4,13 @@
       "runs-on": "macos-12",
       "steps": [
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
         },
         {
-          "uses": "vmactions/dragonflybsd-vm@v0",
+          "uses": "vmactions/dragonflybsd-vm@v0.0.6",
           "with": {
             "copyback": false,
             "mem": 2048,

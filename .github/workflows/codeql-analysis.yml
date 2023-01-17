@@ -17,14 +17,14 @@
           }
         },
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
         },
         {
           "name": "Initialise CodeQL",
-          "uses": "github/codeql-action/init@v2",
+          "uses": "github/codeql-action/init@codeql-bundle-20230105",
           "with": {
             "languages": "cpp"
           }
@@ -34,7 +34,7 @@
         },
         {
           "name": "Perform CodeQL Analysis",
-          "uses": "github/codeql-action/analyze@v2"
+          "uses": "github/codeql-action/analyze@codeql-bundle-20230105"
         }
       ],
       "strategy": {
