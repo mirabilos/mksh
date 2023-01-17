@@ -54,6 +54,7 @@
       "branches": [
         "travis-ci"
       ]
-    }
+    },
+    "workflow_dispatch": null
   }
 }
