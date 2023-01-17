@@ -4,13 +4,13 @@
       "runs-on": "macos-12",
       "steps": [
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
         },
         {
-          "uses": "vmactions/solaris-vm@v0",
+          "uses": "vmactions/solaris-vm@v0.0.9",
           "with": {
             "copyback": false,
             "mem": 2048,

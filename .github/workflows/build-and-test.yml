@@ -12,7 +12,7 @@
           }
         },
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
@@ -35,7 +35,7 @@
       "runs-on": "${{ matrix.os }}",
       "steps": [
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
@@ -63,13 +63,13 @@
       "runs-on": "ubuntu-latest",
       "steps": [
         {
-          "uses": "actions/checkout@v3"
+          "uses": "actions/checkout@v3.3.0"
         },
         {
           "run": "(git gc || :)"
         },
         {
-          "uses": "jirutka/setup-alpine@v1",
+          "uses": "jirutka/setup-alpine@v1.1.1",
           "with": {
             "branch": "edge",
             "packages": "build-base ed perl util-linux yash"
