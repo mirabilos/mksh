@@ -1,11 +1,11 @@
 /*-
  * MirBSD sanitisation attempt for C integer madness
  *
- * © mirabilos Ⓕ CC0 or The MirOS Licence (MirBSD)
+ * © mirabilos Ⓕ CC0 or The MirOS Licence
  */
 
 #ifndef SYSKERN_MBSDINT_H
-#define SYSKERN_MBSDINT_H "$MirOS: src/kern/include/mbsdint.h,v 1.19 2023/02/06 01:17:20 tg Exp $"
+#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.17 2023/01/08 21:21:07 tg Exp $"
 
 /* if you have <sys/types.h> and/or <stdint.h>, include them before this */
 /* also if <limits.h> defines SSIZE_MAX or UINTPTR_MAX but not the types */
@@ -23,8 +23,7 @@
 
 /* define to 1 or 2 to shorten some macros, for old systems */
 /* or 3 for environments with very small address space (< 32 bits) */
-#if !defined(MBSDINT_H_SMALL_SYSTEM) || ((MBSDINT_H_SMALL_SYSTEM) < 1)
-#undef MBSDINT_H_SMALL_SYSTEM	/* in case someone defined it as 0 */
+#if !defined(MBSDINT_H_SMALL_SYSTEM)
 #define mbiMASK_bitmax		279
 #elif (MBSDINT_H_SMALL_SYSTEM) >= 2
 #define mbiMASK_bitmax		62
@@ -68,7 +67,7 @@
 #define mbiHUGE_MAX		LLONG_MAX
 #define mbiHUGE_U		unsigned long long
 #define mbiHUGE_UMAX		ULLONG_MAX
-#else /* C89? */
+#else
 #define mbiHUGE_S		long
 #define mbiHUGE_MIN		LONG_MIN
 #define mbiHUGE_MAX		LONG_MAX
@@ -104,7 +103,7 @@
 #define mbi_maskchk31_8(v)	mbi_maskchk31s(v, mbi_maskchk31_9(v >> 31))
 #elif (MBSDINT_H_SMALL_SYSTEM) >= 2
 #define mbi_maskchk31_1(v)	mbi_maskchk31s(v, mbi_maskchk31_9(v >> 31))
-#else /* (MBSDINT_H_SMALL_SYSTEM) == 1 */
+#else
 #define mbi_maskchk31_1(v)	mbi_maskchk31s(v, mbi_maskchk31_8(v >> 31))
 #define mbi_maskchk31_8(v)	mbi_maskchk31s(v, mbi_maskchk31_9(v >> 31))
 #endif
@@ -153,8 +152,6 @@ mbiCTAS(mbsdint_h) {
 #undef mbiCTf
  mbiCTA(osf4, '\x00' == 0);
  /* C types */
- mbiCTA(basic_char_smask, mbiMASK_CHK(SCHAR_MAX));
- mbiCTA(basic_char_umask, mbiMASK_CHK(UCHAR_MAX));
  mbiCTA(basic_char,
 	sizeof(char) == 1 && (CHAR_BIT) >= 7 && (CHAR_BIT) < 2040 &&
 	mbiTYPE_UMAX(unsigned char) == (UCHAR_MAX) &&
@@ -163,6 +160,8 @@ mbiCTAS(mbsdint_h) {
 	mbiTYPE_UBITS(unsigned char) >= 8 && (SCHAR_MIN) < 0 &&
 	((SCHAR_MIN) == -(SCHAR_MAX) || (SCHAR_MIN)+1 == -(SCHAR_MAX)) &&
 	mbiTYPE_UBITS(unsigned char) == (unsigned int)(CHAR_BIT));
+ mbiCTA(basic_char_smask, mbiMASK_CHK(SCHAR_MAX));
+ mbiCTA(basic_char_umask, mbiMASK_CHK(UCHAR_MAX));
  mbiCTA_TYPE_MBIT(short, short);
  mbiCTA_TYPE_MBIT(ushort, unsigned short);
  mbiCTA_TYPE_MBIT(int, int);
@@ -177,95 +176,71 @@ mbiCTAS(mbsdint_h) {
  mbiCTA_TYPE_MBIT(imax, intmax_t);
  mbiCTA_TYPE_MBIT(uimax, uintmax_t);
 #endif
- mbiCTA(basic_short_smask, mbiMASK_CHK(SHRT_MAX));
- mbiCTA(basic_short_umask, mbiMASK_CHK(USHRT_MAX));
  mbiCTA(basic_short,
 	mbiTYPE_UMAX(unsigned short) == (USHRT_MAX) &&
 	mbiTYPE_UBITS(unsigned short) >= 16 && (SHRT_MIN) < 0 &&
 	((SHRT_MIN) == -(SHRT_MAX) || (SHRT_MIN)+1 == -(SHRT_MAX)) &&
 	sizeof(short) >= sizeof(signed char) &&
 	sizeof(unsigned short) >= sizeof(unsigned char) &&
-	mbiMASK_BITS(SHRT_MAX) >= mbiMASK_BITS(SCHAR_MAX) &&
-	mbiMASK_BITS(SHRT_MAX) < mbiMASK_BITS(mbiHUGE_MAX) &&
-	mbiMASK_BITS(USHRT_MAX) >= mbiMASK_BITS(UCHAR_MAX) &&
-	mbiMASK_BITS(USHRT_MAX) < mbiMASK_BITS(mbiHUGE_UMAX) &&
 	sizeof(short) == sizeof(unsigned short));
- mbiCTA(basic_int_smask, mbiMASK_CHK(INT_MAX));
- mbiCTA(basic_int_umask, mbiMASK_CHK(UINT_MAX));
+ mbiCTA(basic_short_smask, mbiMASK_CHK(SHRT_MAX));
+ mbiCTA(basic_short_umask, mbiMASK_CHK(USHRT_MAX));
  mbiCTA(basic_int,
 	mbiTYPE_UMAX(unsigned int) == (UINT_MAX) &&
 	mbiTYPE_UBITS(unsigned int) >= 16 && (INT_MIN) < 0 &&
 	((INT_MIN) == -(INT_MAX) || (INT_MIN)+1 == -(INT_MAX)) &&
 	sizeof(int) >= sizeof(short) &&
 	sizeof(unsigned int) >= sizeof(unsigned short) &&
-	mbiMASK_BITS(INT_MAX) >= mbiMASK_BITS(SHRT_MAX) &&
-	mbiMASK_BITS(INT_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
-	mbiMASK_BITS(UINT_MAX) >= mbiMASK_BITS(USHRT_MAX) &&
-	mbiMASK_BITS(UINT_MAX) <= mbiMASK_BITS(mbiHUGE_UMAX) &&
 	sizeof(int) == sizeof(unsigned int));
- mbiCTA(basic_long_smask, mbiMASK_CHK(LONG_MAX));
- mbiCTA(basic_long_umask, mbiMASK_CHK(ULONG_MAX));
+ mbiCTA(basic_int_smask, mbiMASK_CHK(INT_MAX));
+ mbiCTA(basic_int_umask, mbiMASK_CHK(UINT_MAX));
  mbiCTA(basic_long,
 	mbiTYPE_UMAX(unsigned long) == (ULONG_MAX) &&
 	mbiTYPE_UBITS(unsigned long) >= 32 && (LONG_MIN) < 0 &&
 	((LONG_MIN) == -(LONG_MAX) || (LONG_MIN)+1 == -(LONG_MAX)) &&
 	sizeof(long) >= sizeof(int) &&
 	sizeof(unsigned long) >= sizeof(unsigned int) &&
-	mbiMASK_BITS(LONG_MAX) >= mbiMASK_BITS(INT_MAX) &&
-	mbiMASK_BITS(LONG_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
-	mbiMASK_BITS(ULONG_MAX) >= mbiMASK_BITS(UINT_MAX) &&
-	mbiMASK_BITS(ULONG_MAX) <= mbiMASK_BITS(mbiHUGE_UMAX) &&
 	sizeof(long) == sizeof(unsigned long));
+ mbiCTA(basic_long_smask, mbiMASK_CHK(LONG_MAX));
+ mbiCTA(basic_long_umask, mbiMASK_CHK(ULONG_MAX));
 #ifdef LLONG_MIN
- mbiCTA(basic_quad_smask, mbiMASK_CHK(LLONG_MAX));
- mbiCTA(basic_quad_umask, mbiMASK_CHK(ULLONG_MAX));
  mbiCTA(basic_quad,
 	mbiTYPE_UMAX(unsigned long long) == (ULLONG_MAX) &&
 	mbiTYPE_UBITS(unsigned long long) >= 32 && (LLONG_MIN) < 0 &&
 	((LLONG_MIN) == -(LLONG_MAX) || (LLONG_MIN)+1 == -(LLONG_MAX)) &&
 	sizeof(long long) >= sizeof(long) &&
 	sizeof(unsigned long long) >= sizeof(unsigned long) &&
-	mbiMASK_BITS(LLONG_MAX) >= mbiMASK_BITS(LONG_MAX) &&
-	mbiMASK_BITS(LLONG_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
-	mbiMASK_BITS(ULLONG_MAX) >= mbiMASK_BITS(ULONG_MAX) &&
-	mbiMASK_BITS(ULLONG_MAX) <= mbiMASK_BITS(mbiHUGE_UMAX) &&
 	sizeof(long long) == sizeof(unsigned long long));
+ mbiCTA(basic_quad_smask, mbiMASK_CHK(LLONG_MAX));
+ mbiCTA(basic_quad_umask, mbiMASK_CHK(ULLONG_MAX));
 #endif
 #ifdef INTMAX_MIN
- mbiCTA(basic_imax_smask, mbiMASK_CHK(INTMAX_MAX));
- mbiCTA(basic_imax_umask, mbiMASK_CHK(UINTMAX_MAX));
  mbiCTA(basic_imax,
 	mbiTYPE_UMAX(uintmax_t) == (UINTMAX_MAX) &&
 	mbiTYPE_UBITS(uintmax_t) >= 32 && (INTMAX_MIN) < 0 &&
 	((INTMAX_MIN) == -(INTMAX_MAX) || (INTMAX_MIN)+1 == -(INTMAX_MAX)) &&
+#ifdef LLONG_MIN
+	sizeof(intmax_t) >= sizeof(long long) &&
+	sizeof(uintmax_t) >= sizeof(unsigned long long) &&
+#else
 	sizeof(intmax_t) >= sizeof(long) &&
 	sizeof(uintmax_t) >= sizeof(unsigned long) &&
-	mbiMASK_BITS(INTMAX_MAX) >= mbiMASK_BITS(LONG_MAX) &&
-	mbiMASK_BITS(INTMAX_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
-	mbiMASK_BITS(UINTMAX_MAX) >= mbiMASK_BITS(ULONG_MAX) &&
-	mbiMASK_BITS(UINTMAX_MAX) <= mbiMASK_BITS(mbiHUGE_UMAX) &&
+#endif
 	sizeof(intmax_t) == sizeof(uintmax_t));
-#ifdef LLONG_MIN
- mbiCTA(basic_imax_llong,
-	mbiMASK_BITS(INTMAX_MAX) >= mbiMASK_BITS(LLONG_MAX) &&
-	mbiMASK_BITS(UINTMAX_MAX) >= mbiMASK_BITS(ULLONG_MAX) &&
-	sizeof(intmax_t) >= sizeof(long long) &&
-	sizeof(uintmax_t) >= sizeof(unsigned long long));
-#endif /* INTMAX_MIN && LLONG_MIN */
-#endif /* INTMAX_MIN */
+ mbiCTA(basic_imax_smask, mbiMASK_CHK(INTMAX_MAX));
+ mbiCTA(basic_imax_umask, mbiMASK_CHK(UINTMAX_MAX));
+#endif
  /* size_t is C but ssize_t is POSIX */
  mbiCTA_TYPE_NOTF(size_t);
  mbiCTA(basic_sizet,
 	sizeof(size_t) >= sizeof(unsigned int) &&
 	sizeof(size_t) <= sizeof(mbiHUGE_U) &&
 	mbiTYPE_ISU(size_t) &&
-	mbiTYPE_UBITS(size_t) >= mbiMASK_BITS(UINT_MAX) &&
 	mbiTYPE_UBITS(size_t) <= mbiMASK_BITS(mbiHUGE_UMAX));
 #ifdef SIZE_MAX
- mbiCTA(basic_sizet_mask, mbiMASK_CHK(SIZE_MAX));
  mbiCTA(basic_sizet_max,
+	mbiMASK_CHK(SIZE_MAX) &&
 	mbiMASK_BITS(SIZE_MAX) <= mbiTYPE_UBITS(size_t) &&
-	mbiMASK_BITS(SIZE_MAX) >= mbiMASK_BITS(USHRT_MAX) &&
 	((mbiHUGE_U)(SIZE_MAX) == (mbiHUGE_U)(size_t)(SIZE_MAX)));
 #endif
  /* note mbiSIZEMAX is not necessarily a mask (0b0*1+) */
@@ -279,47 +254,33 @@ mbiCTAS(mbsdint_h) {
 	sizeof(ptrdiff_t) <= sizeof(mbiHUGE_S) &&
 	!mbiTYPE_ISU(ptrdiff_t));
 #ifdef PTRDIFF_MAX
- mbiCTA(basic_ptrdifft_mask, mbiMASK_CHK(PTRDIFF_MAX));
  mbiCTA(basic_ptrdifft_max,
-	mbiMASK_BITS(PTRDIFF_MAX) >= mbiMASK_BITS(INT_MAX) &&
-	mbiMASK_BITS(PTRDIFF_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
+	mbiMASK_CHK(PTRDIFF_MAX) &&
 	((mbiHUGE_S)(PTRDIFF_MAX) == (mbiHUGE_S)(ptrdiff_t)(PTRDIFF_MAX)));
 #endif
  /* UGH! off_t is POSIX, with no _MIN/_MAX constants… WTF‽ */
 #ifdef SSIZE_MAX
  mbiCTA_TYPE_NOTF(ssize_t);
- mbiCTA(basic_ssizet_mask, mbiMASK_CHK(SSIZE_MAX));
  mbiCTA(basic_ssizet,
 	sizeof(ssize_t) == sizeof(size_t) &&
 	!mbiTYPE_ISU(ssize_t) &&
-	mbiMASK_BITS(SSIZE_MAX) >= mbiMASK_BITS(INT_MAX) &&
-	mbiMASK_BITS(SSIZE_MAX) <= mbiMASK_BITS(mbiHUGE_MAX) &&
 	((mbiHUGE_S)(SSIZE_MAX) == (mbiHUGE_S)(ssize_t)(SSIZE_MAX)) &&
-	mbiMASK_BITS(SSIZE_MAX) < mbiTYPE_UBITS(size_t));
 #ifdef SIZE_MAX
- mbiCTA(basic_ssizet_sizet,
-	mbiMASK_BITS(SSIZE_MAX) <= mbiMASK_BITS(SIZE_MAX));
-#endif /* SSIZE_MAX && SIZE_MAX */
-#endif /* SSIZE_MAX */
+	mbiMASK_BITS(SSIZE_MAX) <= mbiMASK_BITS(SIZE_MAX) &&
+#endif
+	mbiMASK_BITS(SSIZE_MAX) < mbiTYPE_UBITS(size_t));
+ mbiCTA(basic_ssizet_mask, mbiMASK_CHK(SSIZE_MAX));
+#endif
 #ifdef UINTPTR_MAX
- mbiCTA(basic_uintptr_mask, mbiMASK_CHK(UINTPTR_MAX));
  mbiCTA(basic_uintptr,
 	sizeof(uintptr_t) >= sizeof(ptrdiff_t) &&
 	sizeof(uintptr_t) >= sizeof(size_t) &&
 	mbiTYPE_ISU(uintptr_t) &&
 	mbiMASK_BITS(UINTPTR_MAX) == mbiTYPE_UBITS(uintptr_t) &&
 	((mbiHUGE_U)(UINTPTR_MAX) == (mbiHUGE_U)(uintptr_t)(UINTPTR_MAX)) &&
-	mbiTYPE_UBITS(uintptr_t) >= mbiMASK_BITS(UINT_MAX) &&
 	mbiTYPE_UBITS(uintptr_t) <= mbiMASK_BITS(mbiHUGE_UMAX));
-#ifdef PTRDIFF_MAX
- mbiCTA(basic_uintptr_pdt,
-	mbiMASK_BITS(UINTPTR_MAX) >= mbiMASK_BITS(PTRDIFF_MAX));
-#endif /* UINTPTR_MAX && PTRDIFF_MAX */
-#ifdef SIZE_MAX
- mbiCTA(basic_uintptr_sizet,
-	mbiMASK_BITS(UINTPTR_MAX) >= mbiMASK_BITS(SIZE_MAX));
-#endif /* UINTPTR_MAX && SIZE_MAX */
-#endif /* UINTPTR_MAX */
+ mbiCTA(basic_uintptr_mask, mbiMASK_CHK(UINTPTR_MAX));
+#endif
  /* C99 §6.2.6.2(1, 2, 6) permits M ≤ N, but M < N is normally desired */
  /* here require signed/unsigned types to have same width (M=N-1) */
  mbiCTA(vbits_char, mbiMASK_BITS(UCHAR_MAX) == mbiMASK_BITS(SCHAR_MAX) + 1U);
@@ -332,18 +293,10 @@ mbiCTAS(mbsdint_h) {
 #ifdef INTMAX_MIN
  mbiCTA(vbits_imax, mbiMASK_BITS(UINTMAX_MAX) == mbiMASK_BITS(INTMAX_MAX) + 1U);
 #endif
-#ifdef SSIZE_MAX
- mbiCTA(vbits_size, mbiTYPE_UBITS(size_t) == mbiMASK_BITS(SSIZE_MAX) + 1U);
-#endif
-#if defined(UINTPTR_MAX) && defined(PTRDIFF_MAX)
- mbiCTA(vbits_iptr, mbiMASK_BITS(UINTPTR_MAX) == mbiMASK_BITS(PTRDIFF_MAX) + 1U);
-#endif
  /* require pointers and size_t to take up the same amount of space */
  mbiCTA(sizet_voidptr, sizeof(size_t) == sizeof(void *));
  mbiCTA(sizet_sintptr, sizeof(size_t) == sizeof(int *));
  mbiCTA(sizet_funcptr, sizeof(size_t) == sizeof(void (*)(void)));
- /* do size_t and ulong fit each other? */
- mbiCTA(sizet_minlong, sizeof(size_t) >= sizeof(long));
 #if 0 /* breaks on LLP64 (e.g. Windows/amd64) */
  mbiCTA(sizet_inulong, sizeof(size_t) <= sizeof(long));
 #endif
@@ -396,7 +349,7 @@ mbiCTAS(mbsdint_h) {
 
 /* basic building blocks: arithmetics cast helpers */
 
-#define mbiUI(v)		(0U + (v))
+#define mbiUI(v)		(0UL + (v))
 #define mbiUP(ut,v)		mbiUI((ut)(v))
 #define mbiSP(st,v)		(0 + ((st)(v)))
 
@@ -424,7 +377,7 @@ mbiCTAS(mbsdint_h) {
 
 /* 3. ternary */
 #define mbiOT(t,w,j,n)		((w) ? (t)(j) : (t)(n))
-#define mbiMOT(ut,tM,w,j,n)	mbiMM(ut, (tM), mbiOT(ut, (w), (j), (n)))
+#define mbiMOT(ut,tM,w,j,n)	mbiMM(ut, (tM), mbiOT(t, (w), (j), (n)))
 
 /* manual two’s complement in unsigned arithmetics */
 
@@ -466,7 +419,7 @@ mbiCTAS(mbsdint_h) {
 		mbiOT(ut,						\
 		 mbiA_S2VZ(v),						\
 		 mbiOU1(ut,						\
-		  ~,							\
+		  ~							\
 		  mbiOS1(st,						\
 		   -,							\
 		   mbiOS(st, (v), +, 1)					\
@@ -498,7 +451,7 @@ mbiCTAS(mbsdint_h) {
 		   mbiOS1(st,						\
 		    -,							\
 		    mbiOS(st, (v), +, 1)				\
-		   )							\
+		   ),							\
 		  ),							\
 		  +,							\
 		  1U							\
@@ -610,7 +563,7 @@ mbiCTAS(mbsdint_h) {
 } while (/* CONSTCOND */ 0)
 #define mbiCAUmul(ut,vl,vr)	do {					\
 	if (__predict_false(((ut)(vl) > mbi_halftype(ut) ||		\
-	    (ut)(vr) > mbi_halftype(ut)) && (vr) != 0 &&		\
+	    (ut)(vr) > mbi_halftype(ut)) && (vr) == 0 &&		\
 	    mbiOU(ut, mbiTYPE_UMAX(ut), /, (ut)(vr)) < (ut)(vl)))	\
 		mbiCfail;						\
 	(vl) *= (vr);							\
@@ -677,12 +630,7 @@ mbiCTAS(mbsdint_h) {
 	(vl) *= (vr);							\
 } while (/* CONSTCOND */ 0)
 
-/* 3. autotype or signed narrowing assign; this is checked IB */
-#define mbiCAAlet(vl,srctype,vr) do {					\
-	(vl) = (vr);							\
-	if (__predict_false((srctype)(vl) != (srctype)(vr)))		\
-		mbiCfail;						\
-} while (/* CONSTCOND */ 0)
+/* 3. signed narrowing assign; this is checked IB */
 #define mbiCASlet(dsttype,vl,srctype,vr) do {				\
 	(vl) = (dsttype)(vr);						\
 	if (__predict_false((srctype)(vl) != (srctype)(vr)))		\
@@ -713,29 +661,22 @@ mbiCTAS(mbsdint_h) {
 #define mbiKshl(ut,vl,vr)	mbiK_sr(ut, mbiK_shl, (vl), (vr), void)
 /* let vz be sgn(vl) */
 #define mbiKsar(ut,vz,vl,vr)	mbiK_sr(ut, mbiK_sar, (vl), (vr), (vz))
-#define mbiKshr(ut,vl,vr)	mbiK_sr(ut, mbiK_shr, (vl), (vr), 0)
+#define mbiKshr(ut,vl,vr)	mbiK_sr(ut, mbiK_sar, (vl), (vr), 0)
 #define mbiMKrol(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_rol, (vl), (vr), void)
 #define mbiMKror(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_ror, (vl), (vr), void)
 #define mbiMKshl(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_shl, (vl), (vr), void)
-#define mbiMKsar(ut,FM,vz,l,r)	mbiMOT(ut, (FM), (vz), \
-					mbiK_SR(ut, mbiMASK_BITS(FM), \
-					    mbiMK_nr, (l), (r), (FM)), \
-					mbiK_SR(ut, mbiMASK_BITS(FM), \
-					    mbiK_shr, (l), (r), 0))
-#define mbiMKshr(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_shr, (vl), (vr), 0)
+#define mbiMKsar(ut,FM,vz,l,r)	mbiMK_sr(ut, (FM), mbiK_sar,  (l),  (r), (vz))
+#define mbiMKshr(ut,FM,vl,vr)	mbiMK_sr(ut, (FM), mbiK_sar, (vl), (vr), 0)
 /* implementation */
 #define mbiK_sr(ut,n,vl,vr,vz)	mbiK_SR(ut, mbiTYPE_UBITS(ut), n, vl, vr, vz)
 #define mbiMK_sr(ut,FM,n,l,r,z)	mbiMM(ut, (FM), mbiK_SR(ut, mbiMASK_BITS(FM), \
 				    n, mbiMM(ut, (FM), (l)), (r), (z)))
-#define mbiK_SR(ut,b,n,l,r,vz)	mbiK_RS(ut, b, n, l, mbiUI(r) & (b - 1U), (vz))
+#define mbiK_SR(ut,b,n,l,r,vz)	mbiK_RS(ut, b, n, l, mbiUI(r) & (b - 1U), !(vz))
 #define mbiK_RS(ut,b,n,v,cl,zx)	mbiOT(ut, cl, n(ut, v, cl, b - (cl), zx), v)
 #define mbiK_shl(ut,ax,cl,CL,z)	mbiOshl(ut, ax, cl)
-#define mbiK_shr(ut,ax,cl,CL,z)	mbiOshr(ut, ax, cl)
-#define mbiK_sar(ut,ax,cl,CL,z)	mbiOT(ut, z, mbiOU1(ut, ~, mbiOshr(ut, \
-				    mbiOU1(ut, ~, ax), cl)), \
-				    mbiOshr(ut, ax, cl))
-#define mbiMK_nr(ut,ax,cl,CL,m)	mbiOU1(ut, ~, mbiOshr(ut, \
-				    mbiMO1(ut, m, ~, ax), cl))
+#define mbiK_sar(ut,ax,cl,CL,z)	mbiOT(ut, z, mbiOshr(ut, ax, cl), \
+				    mbiOU1(ut, ~, mbiOshr(ut, \
+				    mbiOU1(ut, ~, ax), cl)))
 #define mbiK_rol(ut,ax,cl,CL,z)	\
 	mbiOU(ut, mbiOshl(ut, ax, cl), |, mbiOshr(ut, ax, CL))
 #define mbiK_ror(ut,ax,cl,CL,z)	\
@@ -755,17 +696,6 @@ mbiCTAS(mbsdint_h) {
 					    mbiKdiv(ut, (SM), (vl), (vr)))
 #define mbiMKrem(ut,FM,HM,vl,vr)	mbiMM(ut, (FM), mbiK_rem(ut, (vl), (vr), \
 					    mbiMK_div(ut, (FM), (HM), (vl), (vr))))
-/* statement, assigning to dstdiv and dstrem */
-#define mbiKdivrem(dstdiv,dstrem,ut,SM,vl,vr) do {			\
-	ut mbi__TMP = mbiKdiv(ut, (SM), (vl), (vr));			\
-	(dstdiv) = mbi__TMP;						\
-	(dstrem) = mbiK_rem(ut, (vl), (vr), mbi__TMP);			\
-} while (/* CONSTCOND */ 0)
-#define mbiMKdivrem(dstdiv,dstrem,ut,FM,HM,vl,vr) do {			\
-	ut mbi__TMP = mbiMK_div(ut, (FM), (HM), (vl), (vr));		\
-	(dstdiv) = mbiMM(ut, (FM), mbi__TMP);				\
-	(dstrem) = mbiMM(ut, (FM), mbiK_rem(ut, (vl), (vr), mbi__TMP));	\
-} while (/* CONSTCOND */ 0)
 
 /* nil pointer constant */
 #if (defined(__cplusplus) && (__cplusplus >= 201103L)) || \

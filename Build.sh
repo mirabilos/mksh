@@ -1,10 +1,10 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.830 2022/09/05 22:53:26 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.834 2023/01/08 21:13:40 tg Exp $'
 set +evx
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
 #		2011, 2012, 2013, 2014, 2015, 2016, 2017, 2019,
-#		2020, 2021, 2022, 2023
+#		2020, 2021, 2022
 #	mirabilos <m@mirbsd.org>
 #
 # Provided that these terms and disclaimer and all copyright notices
@@ -244,13 +244,13 @@ echo "For the build logs, demonstrate that /dev/null and /dev/tty exist:"
 ls -l /dev/null /dev/tty
 cat <<EOF
 Flags on entry (plus HAVE_* which are not shown here):
-- CC        <$CC>
-- CFLAGS    <$CFLAGS>
-- CPPFLAGS  <$CPPFLAGS>
-- LDFLAGS   <$LDFLAGS>
-- LIBS      <$LIBS>
-- LDSTATIC  <$LDSTATIC>
-- TARGET_OS <$TARGET_OS> TARGET_OSREV <$TARGET_OSREV>
+ CC        <$CC>
+ CFLAGS    <$CFLAGS>
+ CPPFLAGS  <$CPPFLAGS>
+ LDFLAGS   <$LDFLAGS>
+ LIBS      <$LIBS>
+ LDSTATIC  <$LDSTATIC>
+ TARGET_OS <$TARGET_OS> TARGET_OSREV <$TARGET_OSREV>
 
 EOF
 
@@ -2117,13 +2117,6 @@ ac_testn mbi_ctas '' 'if integer types are sane enough' <<-'EOF'
 	#include <stdarg.h>
 	#include <stdint.h>
 	#endif
-	#include <limits.h>
-	#include <stddef.h>
-	/* we need uintptr_t */
-	#ifndef UINTPTR_MAX
-	typedef size_t uintptr_t;
-	#define UINTPTR_MAX mbiTYPE_UMAX(uintptr_t)
-	#endif
 	#undef MBSDINT_H_SKIP_CTAS
 	#include "mbsdint.h"
 	#include <unistd.h>
@@ -2136,7 +2129,6 @@ ac_test can_inttypes '' "for standard 32-bit integer types" <<-'EOF'
 	#include <limits.h>
 	#include <stddef.h>
 	#if HAVE_STDINT_H
-	#include <stdarg.h>
 	#include <stdint.h>
 	#endif
 	int main(int ac, char *av[]) {
@@ -2805,8 +2797,6 @@ mksh_cfg= cfg_NSIG
 	$e done.
 fi
 
-check_categories="$check_categories have:select:$HAVE_SELECT"
-
 if test 1 = "$MKSH_UNLIMITED"; then
 	cpp_define MKSH_UNLIMITED 1
 else
@@ -2815,7 +2805,6 @@ fi
 
 if test 1 = "$USE_PRINTF_BUILTIN"; then
 	cpp_define MKSH_PRINTF_BUILTIN 1
-	check_categories="$check_categories printf-builtin"
 else
 	USE_PRINTF_BUILTIN=0
 fi

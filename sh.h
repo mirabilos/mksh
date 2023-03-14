@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.1001 2023/01/08 22:15:32 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.1002 2023/01/08 22:53:22 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -153,13 +153,6 @@
 #ifdef MIRBSD_BOOTFLOPPY
 #include <wchar.h>
 #endif
-
-/* we need uintptr_t */
-#ifndef UINTPTR_MAX
-typedef size_t uintptr_t;
-#define UINTPTR_MAX mbiTYPE_UMAX(uintptr_t)
-#endif
-
 #undef MBSDINT_H_SKIP_CTAS
 #ifndef MKSH_DO_MBI_CTAS
 #define MBSDINT_H_SKIP_CTAS
@@ -242,7 +235,7 @@ typedef size_t uintptr_t;
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#define MKSH_VERSION "R59 2023/03/14"
+#define MKSH_VERSION "R59 2023/01/08"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -256,6 +249,7 @@ typedef signed long ksl;		/* signed long, arithmetic */
 #define KBY(c)	((kby)(KUI(c) & 0xFFU))	/* byte, truncated if necessary */
 #define KBI(c)	((kui)(KUI(c) & 0xFFU))	/* byte as u_int, truncated */
 #define KUI(u)	((kui)(u))		/* int as u_int, not truncated */
+#define K32(u)	((k32)(KUI(u) & 0xFFFFFFFFU))
 
 #define K32_HM		0x7FFFFFFFUL
 #define K32_FM		0xFFFFFFFFUL
@@ -2861,8 +2855,8 @@ void set_ifs(const char *);
 #define FL_DOT		0x4000	/* ‘.’ seen: printf(3) precision specified */
 /*
  * %#o produces the longest output: '0' + w/3 + NUL
- * %#x produces '0x' + w/4 + NUL which is at least as long (w=8, w>9)
- * %+d produces sign + w/log₂(10) + NUL which takes less than octal obviously
+ * %#x produces '0x' + w/4 + NUL which is at least as long (w=8)
+ * %+d produces sign + w/log₂(10) + NUL which takes more than octal obviously
  */
 #define NUMBUFSZ (1U + (mbiTYPE_UBITS(kul) + 2U) / 3U + /* NUL */ 1U)
 #define NUMBUFLEN(base,result) ((base) + NUMBUFSZ - (result) - 1U)
