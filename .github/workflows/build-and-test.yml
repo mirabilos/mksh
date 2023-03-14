@@ -18,7 +18,7 @@
           "run": "(git gc || :)"
         },
         {
-          "run": "ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 && export ASAN_OPTIONS && env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' dash Build.sh ${{ matrix.testlksh }} -r -g && script -qef -c './test.sh -e ASAN_OPTIONS=\"$ASAN_OPTIONS\" -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
+          "run": "ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 && export ASAN_OPTIONS && case \"${{ matrix.testlksh }}\" in *L*) CONFIG_SHELL=dash; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) CONFIG_SHELL=bash; unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && export CONFIG_SHELL && env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' $CONFIG_SHELL Build.sh ${{ matrix.testlksh }} -r -g && script -qef -c './test.sh -e ASAN_OPTIONS=\"$ASAN_OPTIONS\" -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
@@ -41,7 +41,7 @@
           "run": "(git gc || :)"
         },
         {
-          "run": "env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi && ./?ksh FAQ2HTML.sh && echo Alles gut."
+          "run": "case \"${{ matrix.testlksh }}\" in *L*) USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
@@ -76,7 +76,7 @@
           }
         },
         {
-          "run": "tryshell=yash; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
+          "run": "tryshell=yash; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh -f'; else script -q typescript ./test.sh -f; fi; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; echo Alles gut.",
           "shell": "alpine.sh {0}"
         }
       ]

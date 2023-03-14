@@ -15,7 +15,7 @@
             "copyback": false,
             "mem": 2048,
             "prepare": "pkg_add perl",
-            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; echo >test.wait; (script -qf -c './test.sh -f; echo $? >test.res; sleep 1; rm -f test.wait'; maxwait=0; while test -e test.wait; do sleep 1; maxwait=$(expr $maxwait + 1); test $maxwait -lt 900 || break; done; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; done; echo Alles gut.",
+            "run": "tryshell=ksh; nextshell=sh; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; echo >test.wait; (script -qf -c './test.sh -f; echo $? >test.res; sleep 1; rm -f test.wait'; maxwait=0; while test -e test.wait; do sleep 1; maxwait=$(expr $maxwait + 1); test $maxwait -lt 900 || break; done; exit \"$(cat test.res)\"); ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; echo Alles gut.",
             "usesh": true
           }
         }
