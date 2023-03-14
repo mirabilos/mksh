@@ -1977,7 +1977,7 @@ c_read(const char **wp)
 				vq->flag |= AINDEX;
 		} else {
 			vq = arraysearch(vp, idx);
-			idx = K32(idx + 1U);
+			idx = mbiMO(k32, K32_FM, idx, +, 1U);
 		}
 	} else {
 		vq = global(*wp);
