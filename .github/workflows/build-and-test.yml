@@ -71,6 +71,7 @@
         {
           "uses": "jirutka/setup-alpine@v1.1.1",
           "with": {
+            "arch": "${{ matrix.alpinearch }}",
             "branch": "edge",
             "packages": "build-base ed perl util-linux yash"
           }
