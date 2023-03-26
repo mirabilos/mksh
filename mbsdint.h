@@ -5,7 +5,7 @@
  */
 
 #ifndef SYSKERN_MBSDINT_H
-#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.28 2023/03/26 02:38:11 tg Exp $"
+#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.30 2023/03/26 20:43:38 tg Exp $"
 
 /*
  * cpp defines to set:
@@ -496,7 +496,7 @@ mbiCTAS(mbsdint_h) {
  * Where unsigned values may be either properly unsigned or
  * manually represented in two’s complement (M=N-1 above),
  * signed values are the host’s (and conversion will UB for
- * -type_MAX-1 on one’s complement or sign-and-magnitude,
+ * -type_MAX-1 unless the mbiSAFECOMPLEMENT macro equals 1,
  * so don’t use that without checking), unsigned magnitude
  * ranges from 0 to type_MAX+1, and we try pretty hard to
  * avoid UB and (with one exception, below, casting into
@@ -713,7 +713,7 @@ mbiCTAS(mbsdint_h) {
 #define mbi_halftype(ut)	(!mbiTYPE_ISU(ut) ? 07 : \
 	((ut)(mbiOshl(ut, 1U, mbiTYPE_UBITS(ut) / 2U) - 1U)))
 /* awful: GCC complains if e.g. vl is mbiHUGE_U, vr is unsigned int */
-#ifdef __GNUC__
+#if 1
 #define mbi_xhalftype(ut,a,b)   \
 	(((ut)a | (ut)b) > mbi_halftype(ut))
 #else
@@ -818,7 +818,7 @@ mbiCTAS(mbsdint_h) {
 #if mbiSAFECOMPLEMENT
 #define mbiCAsafeU2S(lim,ut,v) /* nothing */
 #define mbiCAsafeVZM2S(lim,ut,vz,m) /* nothing */
-#else /* one’s complement or sign-and-magnitude */
+#else /* one’s complement or sign-and-magnitude or -type_MAX-1 is a trap */
 #define mbiCAsafeU2S(lim,ut,v) do {					\
 	if (__predict_false((ut)(v) == mbiOU(ut, lim ## _MAX, +, 1)))	\
 		mbiCfail;						\
