@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/ulimit.c,v 1.9 2023/03/19 23:33:48 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/ulimit.c,v 1.14 2023/03/26 02:46:37 tg Exp $");
 
 #define SOFT	0x1
 #define HARD	0x2
@@ -37,55 +37,67 @@ typedef unsigned long rlim_t;
 
 /* Magic to divine the 'm' and 'v' limits */
 
+#undef MKHL_AS
+#undef MKHL_VMEM
+#undef MKHL_RSS
+
 #ifdef RLIMIT_AS
-#if !defined(RLIMIT_VMEM) || (RLIMIT_VMEM == RLIMIT_AS) || \
-    !defined(RLIMIT_RSS) || (RLIMIT_VMEM == RLIMIT_RSS)
-#define ULIMIT_V_IS_AS
-#elif defined(RLIMIT_VMEM)
-#if !defined(RLIMIT_RSS) || (RLIMIT_RSS == RLIMIT_AS)
-#define ULIMIT_V_IS_AS
-#else
-#define ULIMIT_V_IS_VMEM
+#define MKHL_AS
 #endif
-#endif
+
+#ifdef RLIMIT_VMEM
+#define MKHL_VMEM
 #endif
 
 #ifdef RLIMIT_RSS
-#ifdef ULIMIT_V_IS_VMEM
-#define ULIMIT_M_IS_RSS
-#elif defined(RLIMIT_VMEM) && (RLIMIT_VMEM == RLIMIT_RSS)
-#define ULIMIT_M_IS_VMEM
-#else
-#define ULIMIT_M_IS_RSS
-#endif
-#if defined(ULIMIT_M_IS_RSS) && defined(RLIMIT_AS) && \
-    !defined(__APPLE__) && (RLIMIT_RSS == RLIMIT_AS)
-/* On Mac OSX keep -m as -v alias for pkgsrc and other software expecting it */
-#undef ULIMIT_M_IS_RSS
-#endif
+#define MKHL_RSS
 #endif
 
-#if !defined(RLIMIT_AS) && !defined(ULIMIT_M_IS_VMEM) && defined(RLIMIT_VMEM)
+#if defined(MKHL_AS) && defined(MKHL_VMEM) && (RLIMIT_AS == RLIMIT_VMEM)
+#undef MKHL_VMEM
+#endif
+
+#if defined(MKHL_AS) && defined(MKHL_RSS) && (RLIMIT_AS == RLIMIT_RSS)
+#undef MKHL_RSS
+#endif
+
+#if defined(MKHL_VMEM) && defined(MKHL_RSS) && (RLIMIT_VMEM == RLIMIT_RSS)
+#undef MKHL_VMEM
+#endif
+
+#undef ULIMIT_V_IS_AS
+#undef ULIMIT_V_IS_VMEM
+#undef ULIMIT_M_IS_RSS
+#undef ULIMIT_M_IS_VMEM
+
+#ifdef MKHL_AS
+#define ULIMIT_V_IS_AS
+#if defined(MKHL_RSS)
+#define ULIMIT_M_IS_RSS
+#elif defined(MKHL_VMEM)
+#define ULIMIT_M_IS_VMEM
+#endif
+#else /* !MKHL_AS */
+#ifdef MKHL_VMEM
 #define ULIMIT_V_IS_VMEM
 #endif
+#ifdef MKHL_RSS
+#define ULIMIT_M_IS_RSS
+#endif
+#endif /* !MKHL_AS */
 
-#if !defined(ULIMIT_V_IS_VMEM) && defined(RLIMIT_VMEM) && \
-    (!defined(RLIMIT_RSS) || (defined(RLIMIT_AS) && (RLIMIT_RSS == RLIMIT_AS)))
+/* pkgsrc® at least on Mac OSX expects -m as -v alias */
+#if !defined(ULIMIT_M_IS_RSS) && !defined(ULIMIT_M_IS_VMEM)
+#if defined(RLIMIT_VMEM)
 #define ULIMIT_M_IS_VMEM
+#elif defined(RLIMIT_RSS)
+#define ULIMIT_M_IS_RSS
+#endif
 #endif
 
-#if defined(ULIMIT_M_IS_VMEM) && defined(RLIMIT_AS) && \
-    (RLIMIT_VMEM == RLIMIT_AS)
-#undef ULIMIT_M_IS_VMEM
-#endif
-
-#if defined(ULIMIT_M_IS_RSS) && defined(ULIMIT_M_IS_VMEM)
-# error nonsensical m ulimit
-#endif
-
-#if defined(ULIMIT_V_IS_VMEM) && defined(ULIMIT_V_IS_AS)
-# error nonsensical v ulimit
-#endif
+#undef MKHL_AS
+#undef MKHL_VMEM
+#undef MKHL_RSS
 
 #define LIMITS_GEN	"rlimits.gen"
 
@@ -223,7 +235,8 @@ c_ulimit(const char **wp)
 			break;
 		case ORD('?'):
  unknown_opt:
-			bi_errorf("usage: ulimit [-%s] [value]", rlimits_opts);
+			kwarnf0(KWF_BIERR | KWF_NOERRNO,
+			    "usage: ulimit [-%s] [value]", rlimits_opts);
 			return (1);
 		default:
 			what = optc;
@@ -232,7 +245,8 @@ c_ulimit(const char **wp)
 	if (all) {
 		if (wp[builtin_opt.optind]) {
  unexpected_args:
-			bi_errorf(Ttoo_many_args);
+			kwarnf(KWF_BIERR | KWF_ONEMSG | KWF_NOERRNO,
+			    Ttoo_many_args);
 			return (1);
 		}
 		while (i < NELEM(rlimits)) {
@@ -279,14 +293,20 @@ static int
 set_ulimit(const struct limits *l, const char *v, int how MKSH_A_UNUSED)
 {
 	RL_T val = (RL_T)0;
+	mbiHUGE_U hval;
 #if HAVE_RLIMIT
 	struct rlimit limit;
 #endif
 
-	if (strcmp(v, "unlimited") == 0)
+	if (strcmp(v, "unlimited") == 0) {
 		val = RL_U;
-	else {
+		goto got_val;
+	}
+	if (!getnh(v, &hval)) {
 		mksh_uari_t rval;
+
+		if (errno != EINVAL)
+			goto inv_val;
 
 		if (!evaluate(v, (mksh_ari_t *)&rval, KSH_RETURN_ERROR, Nee))
 			return (1);
@@ -297,21 +317,43 @@ set_ulimit(const struct limits *l, const char *v, int how MKSH_A_UNUSED)
 		 * evaluate() to control if unset params are 0 or an error.
 		 */
 		if (!rval && !ctype(v[0], C_DIGIT)) {
-			bi_errorf("invalid %s limit: %s", l->name, v);
+			errno = EINVAL;
+ inv_val:
+			kwarnf0(KWF_BIERR, "invalid %s limit: %s", l->name, v);
 			return (1);
 		}
-#if HAVE_RLIMIT
-		val = (rlim_t)((rlim_t)rval * l->factor);
-#else
-		val = (RL_T)rval;
-#endif
+		hval = rval;
 	}
+	errno = EOVERFLOW;
+#define mbiCfail goto inv_val
+#if HAVE_RLIMIT
+	mbiCAUmul(mbiHUGE_U, hval, l->factor);
+#endif
+	if (mbiTYPE_ISU(RL_T))
+		mbiCASlet(RL_T, val, mbiHUGE_U, hval);
+	else {
+		/* huh, rlim_t is supposed to be unsigned! */
+		mbiHUGE_S hsval;
+
+		mbiCAsafeU2S(mbiHUGE, mbiHUGE_U, hval);
+		hsval = mbiA_U2S(mbiHUGE_U, mbiHUGE_S, mbiHUGE_MAX, hval);
+		mbiCASlet(RL_T, val, mbiHUGE_S, hsval);
+	}
+#undef mbiCfail
+	/* do not numerically apprehend magic values */
+	if (
+#if HAVE_RLIMIT && (defined(RLIM_SAVED_CUR) || defined(RLIM_SAVED_MAX))
+	    val == RLIM_SAVED_CUR || val == RLIM_SAVED_MAX ||
+#endif
+	    val == RL_U)
+		goto inv_val;
+ got_val:
 
 #if HAVE_RLIMIT
 	if (getrlimit(l->resource, &limit) < 0) {
 #ifndef MKSH_SMALL
-		bi_errorf("limit %s could not be read, contact the mksh developers: %s",
-		    l->name, cstrerror(errno));
+		kwarnf(KWF_BIERR | KWF_TWOMSG, l->name,
+		    "limit could not be read, contact the mksh developers");
 #endif
 		/* some can't be read */
 		limit.rlim_cur = RLIM_INFINITY;
@@ -326,7 +368,8 @@ set_ulimit(const struct limits *l, const char *v, int how MKSH_A_UNUSED)
 #else
 	if (l->writable == Nee) {
 	    /* check.t:ulimit-2 fails if we return 1 and/or do:
-		bi_errorf(Tread_only ": %s", l->name);
+		kwarnf(KWF_BIERR | KWF_TWOMSG | KWF_NOERRNO,
+		    Tread_only, l->name);
 	    */
 		return (0);
 	}
@@ -334,9 +377,10 @@ set_ulimit(const struct limits *l, const char *v, int how MKSH_A_UNUSED)
 		return (0);
 #endif
 	if (errno == EPERM)
-		bi_errorf("%s exceeds allowable %s limit", v, l->name);
+		kwarnf0(KWF_BIERR | KWF_NOERRNO,
+		    "%s exceeds allowable %s limit", v, l->name);
 	else
-		bi_errorf("bad %s limit: %s", l->name, cstrerror(errno));
+		kwarnf0(KWF_BIERR, "%s: bad %s limit", v, l->name);
 	return (1);
 }
 
