@@ -12,7 +12,7 @@
           }
         },
         {
-          "uses": "actions/checkout@v3.5.0"
+          "uses": "actions/checkout@v3.5.2"
         },
         {
           "run": "(git gc || :)"
@@ -35,7 +35,7 @@
       "runs-on": "${{ matrix.os }}",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.0"
+          "uses": "actions/checkout@v3.5.2"
         },
         {
           "run": "(git gc || :)"
@@ -63,13 +63,13 @@
       "runs-on": "ubuntu-latest",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.0"
+          "uses": "actions/checkout@v3.5.2"
         },
         {
           "run": "(git gc || :)"
         },
         {
-          "uses": "jirutka/setup-alpine@v1.1.1",
+          "uses": "jirutka/setup-alpine@v1.1.3",
           "with": {
             "arch": "${{ matrix.alpinearch }}",
             "branch": "edge",
