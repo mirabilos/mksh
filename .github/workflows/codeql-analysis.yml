@@ -17,7 +17,7 @@
           }
         },
         {
-          "uses": "actions/checkout@v3.5.0"
+          "uses": "actions/checkout@v3.5.3"
         },
         {
           "run": "(git gc || :)"
@@ -34,7 +34,7 @@
         },
         {
           "name": "Perform CodeQL Analysis",
-          "uses": "github/codeql-action/analyze@v2"
+          "uses": "github/codeql-action/analyze@codeql-bundle-20230524"
         }
       ],
       "strategy": {
