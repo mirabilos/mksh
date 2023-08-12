@@ -94,11 +94,6 @@
   },
   "name": "build-and-test",
   "on": {
-    "push": {
-      "branches": [
-        "travis-ci"
-      ]
-    },
     "workflow_dispatch": null
   }
 }

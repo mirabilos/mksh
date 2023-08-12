@@ -50,11 +50,6 @@
   },
   "name": "CodeQL",
   "on": {
-    "push": {
-      "branches": [
-        "travis-ci"
-      ]
-    },
     "workflow_dispatch": null
   }
 }
