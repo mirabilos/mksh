@@ -12,7 +12,7 @@
         {
           "uses": "saadmk11/github-actions-version-updater@v0.8.0",
           "with": {
-            "ignore": "github/codeql-action/init@v2",
+            "ignore": "github/codeql-action/init@v2,github/codeql-action/analyze@v2",
             "pull_request_user_reviewers": "mirabilos",
             "token": "${{ secrets.WORKFLOW_SECRET }}"
           }
