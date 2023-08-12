@@ -17,7 +17,7 @@
           }
         },
         {
-          "uses": "actions/checkout@v3.5.0"
+          "uses": "actions/checkout@v3.5.3"
         },
         {
           "run": "(git gc || :)"
