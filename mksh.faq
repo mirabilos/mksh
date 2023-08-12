@@ -1,4 +1,4 @@
-RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.37 2023/01/03 17:28:24 tg Exp $
+RCSID: $MirOS: src/bin/mksh/mksh.faq,v 1.40 2023/07/26 03:09:21 tg Exp $
 ToC: spelling
 Title: How do you spell <tt>mksh</tt>? How do you pronounce it?
 
@@ -567,9 +567,9 @@ Title: How POSIX compliant is mksh? Also, UTF-8 vs. locales?
  the PUA; however, there is ambiguity if encountering those UTF-8-encoded, so
  it changed for R60.) The <tt>Arithmetic expressions</tt> and <tt>CAVEATS</tt>
  sections in mksh(1) contain more details about encoding and mapping.</p>
-<p>As of R60, <tt>utf8-mode</tt> maps “raw octets” to U-10000080‥U-100000FF,
- which is outside the UCS and therefore collision-free. There’s work underway
- to make the shell support the full 21-bit UCS range for R60.</p>
+<p>As of R60, <tt>utf8-mode</tt> maps “raw octets” to U-001BBB80‥U-001BBBFF,
+ which is outside the UCS and therefore collision-free, using full
+ 21-bit UTF-8 (without explicit CESU-8 compatibility).</p>
 <p class="boxhead">The following POSIX sh-compatible code toggles the
  <tt>utf8-mode</tt> option dependent on the current POSIX locale, for mksh
  to allow using the UTF-8 mode, within the constraints outlined above, in
@@ -590,6 +590,8 @@ Title: How POSIX compliant is mksh? Also, UTF-8 vs. locales?
 <p>The shell is pretty close to POSIX, when run as <tt>lksh -o posix</tt>
  under the "C" locale it is intended to match. It does not do everything
  like other POSIX-compatible or ‑compliant shells, though.</p>
+<p>Like pretty much all other POSIX-compatible shells, builtins are
+ <em>independent</em> of paths and always recognised in mksh.</p>
 ----
 ToC: function-local-scopes
 Title: What differences in function-local scopes are there?
@@ -886,8 +888,7 @@ ToC: contact
 Title: How do I contact you (to say thanks, for bugreports and questions)?
 
 <p>You can say hi in the <tt>#!/bin/mksh</tt> channel on <a
- href="@@RELPATH@@irc.htm">IRC</a> (OFTC, for now), although… a
- <a href="@@RELPATH@@danke.htm">donation</a> wouldn’t be amiss ☻
+ href="@@RELPATH@@irc.htm">IRC</a> (OFTC, for now).
 <br />The <a href="@@RELPATH@@rss.htm#lists">mailing list</a> can also
  be used for this. The <a href="#faq">extra resources</a> from the FAQ
  entry just one above should also be considered ;-)</p>
