@@ -1,7 +1,7 @@
 {
   "jobs": {
     "bt-asan": {
-      "runs-on": "ubuntu-22.04",
+      "runs-on": "ubuntu-latest",
       "steps": [
         {
           "name": "Cancel previous runs",
@@ -52,9 +52,10 @@
         "fail-fast": true,
         "matrix": {
           "os": [
-            "ubuntu-22.04",
+            "ubuntu-latest",
             "macos-11",
-            "macos-12"
+            "macos-12",
+            "macos-13"
           ],
           "testlksh": [
             "",
