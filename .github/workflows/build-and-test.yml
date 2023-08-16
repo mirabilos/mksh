@@ -18,12 +18,16 @@
           "run": "(git gc || :)"
         },
         {
-          "run": "ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 && export ASAN_OPTIONS && case \"${{ matrix.testlksh }}\" in *L*) CONFIG_SHELL=dash; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) CONFIG_SHELL=bash; unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && export CONFIG_SHELL && env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' $CONFIG_SHELL Build.sh ${{ matrix.testlksh }} -r -g && script -qef -c './test.sh -e ASAN_OPTIONS=\"$ASAN_OPTIONS\" -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
+          "run": "ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 && export ASAN_OPTIONS && case \"${{ matrix.testlksh }}\" in *L*) CONFIG_SHELL=dash; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) CONFIG_SHELL=bash; unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && export CONFIG_SHELL && env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' $CONFIG_SHELL Build.sh ${{ matrix.testlksh }} -r ${{ matrix.debugmode }} && script -qef -c './test.sh -e ASAN_OPTIONS=\"$ASAN_OPTIONS\" -f' && ./?ksh FAQ2HTML.sh && echo Alles gut."
         }
       ],
       "strategy": {
         "fail-fast": true,
         "matrix": {
+          "debugmode": [
+            "",
+            "-g"
+          ],
           "testlksh": [
             "",
             "-L"
