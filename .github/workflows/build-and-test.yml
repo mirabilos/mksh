@@ -90,8 +90,14 @@
         "fail-fast": true,
         "matrix": {
           "alpinearch": [
-            "x86_64",
-            "x86"
+            "aarch64",
+            "armhf",
+            "armv7",
+            "ppc64le",
+            "riscv64",
+            "s390x",
+            "x86",
+            "x86_64"
           ]
         }
       }
