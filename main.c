@@ -28,7 +28,7 @@
 #define EXTERN
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/main.c,v 1.428 2023/06/03 22:45:06 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/main.c,v 1.431 2023/08/22 21:06:23 tg Exp $");
 __IDSTRING(mbsdint_h_rcsid, SYSKERN_MBSDINT_H);
 __IDSTRING(sh_h_rcsid, MKSH_SH_H_ID);
 
@@ -53,7 +53,7 @@ static void main_init(int, const char *[], Source **);
 void chvt_reinit(void);
 static void reclaim(void);
 static void remove_temps(struct temp *);
-static mksh_uari_t rndsetup(void);
+static void rndsetup(void);
 static void init_environ(void);
 #ifdef SIGWINCH
 static void x_sigwinch(int);
@@ -161,16 +161,13 @@ mbiCTA(ari_fits_in_long, sizeof(mksh_ari_t) <= sizeof(long));
 };
 /* end of compile-time asserts */
 
-static mksh_uari_t
+static void
 rndsetup(void)
 {
-	register k32 h;
 	struct {
 		ALLOC_ITEM alloc_INT;
 		void *bssptr, *dataptr, *stkptr, *mallocptr;
-#if defined(__GLIBC__) && (__GLIBC__ >= 2)
-		sigjmp_buf jbuf;
-#endif
+		kshjmp_buf jbuf;
 		struct timeval tv;
 	} *bufptr;
 	char *cp;
@@ -187,8 +184,10 @@ rndsetup(void)
 	bufptr->stkptr = &bufptr;
 	/* randomised malloc in BSD (and possibly others) */
 	bufptr->mallocptr = bufptr;
-#if defined(__GLIBC__) && (__GLIBC__ >= 2)
 	/* glibc pointer guard */
+#ifdef MKSH_NO_SIGSETJMP
+	setjmp(jbuf);
+#else
 	sigsetjmp(bufptr->jbuf, 1);
 #endif
 	/* introduce variation (cannot use gettimeofday *tzp portably) */
@@ -197,10 +196,8 @@ rndsetup(void)
 #ifdef MKSH_ALLOC_CATCH_UNDERRUNS
 	mprotect(((char *)bufptr) + 4096, 4096, PROT_READ | PROT_WRITE);
 #endif
-	h = chvt_rndsetup(bufptr, sizeof(*bufptr));
-
+	chvt_rndsetup(bufptr, sizeof(*bufptr));
 	afree(cp, APERM);
-	return ((mksh_uari_t)h);
 }
 
 /* pre-initio() */
@@ -480,6 +477,7 @@ main_init(int argc, const char *argv[], Source **sp)
 	kshuid = getuid();
 	kshgid = getgid();
 	kshegid = getegid();
+	rndsetup();
 
 	safe_prompt = ksheuid ? "$ " : "# ";
 	vp = global("PS1");
@@ -502,7 +500,7 @@ main_init(int argc, const char *argv[], Source **sp)
 	vp->flag |= INT_U;
 	setint_n((vp = global("KSHGID")), (mksh_uari_t)kshgid, 10);
 	vp->flag |= INT_U;
-	setint_n((vp = global("RANDOM")), rndsetup(), 10);
+	setint_n((vp = global("RANDOM")), rndget(), 10);
 	vp->flag |= INT_U;
 	setint_n((vp_pipest = global(Tpipest)), 0, 10);
 
@@ -715,6 +713,8 @@ main_init(int argc, const char *argv[], Source **sp)
 	/* mark as initialised */
 	baseline_flags[(int)FNFLAGS] = 1;
 #endif
+	rndpush(shell_flags, sizeof(shell_flags));
+	rndset(hash(/*=current_wd*/ cp) ^ hash(argv[0]));
 	if (as_builtin)
 		goto skip_startup_files;
 
