@@ -10,6 +10,6 @@ $(OBJS_BP): $(SRCS_FP) $(NONSRCS)
 .c.o:
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $<
 
-REGRESS_FLAGS=	-f
+REGRESS_FLAGS=	#-f
 regress:
 	./test.sh $(REGRESS_FLAGS)
