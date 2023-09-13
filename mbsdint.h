@@ -5,7 +5,7 @@
  */
 
 #ifndef SYSKERN_MBSDINT_H
-#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.44 2023/08/25 18:16:45 tg Exp $"
+#define SYSKERN_MBSDINT_H "$MirOS: src/bin/mksh/mbsdint.h,v 1.49 2023/09/13 01:01:38 tg Exp $"
 
 /*
  * cpp defines to set:
@@ -47,9 +47,11 @@
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable:4127 4146 4296)
+#define mbsdint__Ws(d)	__pragma(warning(suppress: d))
 #define mbsdint__Wd(d)	__pragma(warning(push)) __pragma(warning(disable: d))
 #define mbsdint__Wpop	__pragma(warning(pop))
 #else
+#define mbsdint__Ws(d)
 #define mbsdint__Wd(d)
 #define mbsdint__Wpop
 #endif
@@ -120,14 +122,63 @@
 #define ssize_t			SSIZE_T
 #endif
 
-/* compile-time assertions: mbiCTAS(srcf_c) { … }; */
-#define mbiCTAS(name)		struct ctassert_ ## name
-#define mbiCTA(name,cond)	char cta_ ## name [(cond) ? 1 : -1]
+/* helper macros (public) */
+/* flexible array member (use with offsetof, NOT C99-style sizeof!) */
+#if (defined(__STDC_VERSION__) && ((__STDC_VERSION__) >= 199901L)) || \
+    defined(__cpp_flexible_array_members)
+#define mbi__FAM(type,name)	type name[]
+#elif defined(__GNUC__) || defined(__cplusplus)
+#define mbi__FAM(type,name)	type name[0] mbsdint__Ws(4200 4820)
+#else
+#define mbi__FAM(type,name)	type name[1] /* SOL */ mbsdint__Ws(4820)
+#endif
+/* field sizeof */
+#if (defined(__STDC_VERSION__) && ((__STDC_VERSION__) >= 199901L))
+#define mbi__FSZ(struc,memb)	(sizeof(((struc){0}).memb))
+#else
+#define mbi__FSZ(struc,memb)	(sizeof(((struc *)0)->memb))
+#endif
+/* stringification with expansion */
+#define mbi__S(x)		#x
+
+/* compile-time assertions */
+#undef mbiCTAS__PFX
+#if (defined(__STDC_VERSION__) && ((__STDC_VERSION__) >= 202311L)) || \
+    defined(__cpp_static_assert)
+#define mbiCTAS__PFX		static_assert
+#elif (defined(__STDC_VERSION__) && ((__STDC_VERSION__) >= 201112L))
+#define mbiCTAS__PFX		_Static_assert
+#elif defined(__GNUC__) && ((__GNUC__ > 4) || \
+    (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)) && !defined(__cplusplus)
+#define mbiCTAS__PFX		__extension__ _Static_assert
+#endif
+#ifdef mbiCTAS__PFX
+/* nothing, but syntax-check equally to manual compile-time assert macro */
+#define mbiCTAS_BEG(name)	struct ctassert_ ## name { int dummy:2; }
+#define mbiCTAS_END(name)	struct ctassert2 ## name { int dummy:2; }
+#ifndef MBSDINT_H_LARGE_ASSERTION_STRINGS
+#define mbi_CTA(fldn,cond)	mbiCTAS__PFX(cond, mbi__S(fldn))
+#else
+#define mbi_CTA(fldn,cond)	mbiCTAS__PFX(cond, mbi__S(fldn) " " mbi__S(cond))
+#endif
+#else
+#define mbiCTAS_BEG(name)						\
+	struct ctassert_ ## name {					\
+		unsigned int ctabeg:1	/* semicolon provided by user */
+#define mbiCTAS_END(name)						\
+		unsigned int ctaend:1;					\
+	};								\
+	struct ctassert2 ## name {					\
+		char ok[sizeof(struct ctassert_ ## name) > 0 ? 1 : -1];	\
+	} /* + user semicolon */
+#define mbi_CTA(fldn,cond)	unsigned int fldn:(cond ? 1 : -1)
+#endif
+#define mbiCTA(name,cond)	mbi_CTA(cta_ ## name, (cond))
 /* special CTAs */
-#define mbiCTA_TYPE_NOTF(type)	mbiCTA_TYPE_notF(type ## _1, type)
-#define mbiCTA_TYPE_notF(nm,ty)	char ctati_ ## nm [((ty)0.5 == 0) ? 1 : -1]
-#define mbiCTA_TYPE_MBIT(nm,ty)	char ctatm_ ## nm [\
-	(sizeof(ty) <= (mbiMASK_bitmax / (CHAR_BIT))) ? 1 : -1]
+#define mbiCTA_TYPE_NOTF(ty)	mbi_CTA(ctati2 ## ty, ((ty)0.5 == 0))
+#define mbiCTA_TYPE_notF(nm,ty)	mbi_CTA(ctati_ ## nm, ((ty)0.5 == 0))
+#define mbiCTA_TYPE_MBIT(nm,ty)	mbi_CTA(ctatm_ ## nm, \
+	(sizeof(ty) <= (mbiMASK_bitmax / (CHAR_BIT))))
 
 /* kinds of types */
 	/* runtime only, but see mbiCTA_TYPE_NOTF */
@@ -296,7 +347,7 @@
 
 #ifndef MBSDINT_H_SKIP_CTAS
 /* compile-time assertions for mbsdint.h */
-mbiCTAS(mbsdint_h) {
+mbiCTAS_BEG(mbsdint_h);
  /* compiler (in)sanity, from autoconf */
 #define mbiCTf(x) 'x'
  mbiCTA(xlc6, mbiCTf(a) == 'x');
@@ -663,7 +714,7 @@ mbiCTAS(mbsdint_h) {
  mbiCTA(sizet_sintptr, sizeof(size_t) == sizeof(int *));
  mbiCTA(sizet_funcptr, sizeof(size_t) == sizeof(void (*)(void)));
 #endif
-};
+mbiCTAS_END(mbsdint_h);
 #endif /* !MBSDINT_H_SKIP_CTAS */
 
 /*
