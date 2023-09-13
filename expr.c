@@ -106,13 +106,13 @@ static struct tbl *intvar(Expr_state *, struct tbl *);
 int
 evaluate(const char *expr, mksh_ari_t *rval, int error_ok, Wahr arith)
 {
-	struct tbl v;
+	union tbl_static v;
 	int ret;
 
-	v.flag = DEFINED | INTEGER;
-	v.type = 0;
-	ret = v_evaluate(&v, expr, error_ok, arith);
-	*rval = v.val.i;
+	v.tbl.flag = DEFINED | INTEGER;
+	v.tbl.type = 0;
+	ret = v_evaluate((struct tbl *)&v, expr, error_ok, arith);
+	*rval = v.tbl.val.i;
 	return (ret);
 }
 
