@@ -6,7 +6,7 @@
         "contents": "read",
         "security-events": "write"
       },
-      "runs-on": "${{ matrix.os }}",
+      "runs-on": "ubuntu-latest",
       "steps": [
         {
           "name": "Cancel previous runs",
@@ -38,13 +38,7 @@
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "os": [
-            "ubuntu-latest",
-            "macos-latest"
-          ]
-        }
+        "fail-fast": true
       }
     }
   },
