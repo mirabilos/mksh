@@ -25,7 +25,7 @@
 #define MKSH_DO_MBI_CTAS
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.123 2022/09/28 17:21:01 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/expr.c,v 1.124 2023/09/16 23:07:45 tg Exp $");
 
 #define EXPRTOK_DEFNS
 #include "exprtok.h"

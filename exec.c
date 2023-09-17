@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.246 2023/01/31 01:05:09 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/exec.c,v 1.247 2023/09/16 23:07:45 tg Exp $");
 
 #ifndef MKSH_DEFAULT_EXECSHELL
 #define MKSH_DEFAULT_EXECSHELL	MKSH_UNIXROOT "/bin/sh"

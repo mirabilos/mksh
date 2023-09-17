@@ -24,7 +24,7 @@
 
 #include "sh.h"
 
-__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.260 2023/08/28 19:36:47 tg Exp $");
+__RCSID("$MirOS: src/bin/mksh/eval.c,v 1.261 2023/09/16 23:07:44 tg Exp $");
 
 /*
  * string expansion

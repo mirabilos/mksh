@@ -30,7 +30,7 @@
  * of said person’s immediate fault when using the work as intended.
  */
 
-#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.1020 2023/09/08 05:10:29 tg Exp $"
+#define MKSH_SH_H_ID "$MirOS: src/bin/mksh/sh.h,v 1.1022 2023/09/17 00:44:36 tg Exp $"
 
 #ifdef MKSH_USE_AUTOCONF_H
 /* things that “should” have been on the command line */
@@ -168,11 +168,12 @@
 #define MBSDINT_H_WANT_INT32 1
 /* the code cannot cope without yet */
 #define MBSDINT_H_WANT_SAFEC 1
+#include "mbsdcc.h"
 #include "mbsdint.h"
 
 /* monkey-patch nil pointer constant */
 #undef NULL
-#define NULL mbi_nil
+#define NULL mbnil
 
 /* monkey-patch known-bad offsetof versions to quell a warning */
 #if (defined(__KLIBC__) || defined(__dietlibc__)) && \
@@ -251,7 +252,7 @@
 #define __SCCSID(x)		__IDSTRING(sccsid,x)
 #endif
 
-#define MKSH_VERSION "R59 2023/08/23"
+#define MKSH_VERSION "R59 2023/09/16"
 
 /* shell types */
 typedef unsigned char kby;		/* byte */
@@ -1447,7 +1448,7 @@ struct temp {
 	pid_t pid;
 	Temp_type type;
 	/* name */
-	mbi__FAM(char, tffn);
+	mbccFAM(char, tffn);
 };
 
 /*
@@ -1928,7 +1929,16 @@ struct tbl {
 	/* flags (see below) */
 	kui flag;
 
-	mbi__FAM(char, name);
+	mbccFAM(char, name);
+};
+
+union tbl_static {
+	struct tbl tbl;
+#ifdef MKSH_BROKEN_OFFSETOF
+	char storage[sizeof(struct tbl) + /* wasteful */ 4];
+#else
+	char storage[offsetof(struct tbl, name[0]) + 4];
+#endif
 };
 
 union tbl_static {
