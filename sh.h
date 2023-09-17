@@ -1941,15 +1941,6 @@ union tbl_static {
 #endif
 };
 
-union tbl_static {
-	struct tbl tbl;
-#ifdef MKSH_BROKEN_OFFSETOF
-	char storage[sizeof(struct tbl) + /* wasteful */ 4];
-#else
-	char storage[offsetof(struct tbl, name[0]) + 4];
-#endif
-};
-
 EXTERN struct tbl *vtemp;
 /* set by isglobal(), global() and local() */
 EXTERN Wahr last_lookup_was_array;
