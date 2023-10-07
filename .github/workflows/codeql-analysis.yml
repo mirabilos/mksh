@@ -30,7 +30,7 @@
           }
         },
         {
-          "run": "tryshell=bash; nextshell=dash; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh'; else script -q typescript ./test.sh; fi; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; echo Alles gut."
+          "run": "tryshell=bash; nextshell=dash; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r -c trace; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh'; else script -q typescript ./test.sh; fi; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; for x in build/*/*.trace; do echo; echo === $x; echo; cat $x; done; echo; echo Alles gut."
         },
         {
           "name": "Perform CodeQL Analysis",
