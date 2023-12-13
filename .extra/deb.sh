@@ -30,7 +30,9 @@ trybuild() {
 		cd ../..
 		return
 	fi
-	if ./$tfn ../../.extra/rtchecks >rtchecks.out; then
+	if test x"$tfn" = x"lksh"; then
+		: not for lksh
+	elif ./$tfn ../../.extra/rtchecks >rtchecks.out; then
 		set -- $(md5sum rtchecks.out)
 		test d5345290b8f3a343f6446710007d4e5a = "$1" || {
 			echo "N: Input:"
