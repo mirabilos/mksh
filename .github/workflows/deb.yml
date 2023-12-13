@@ -1,143 +1,700 @@
 {
   "jobs": {
-    "eol-dietlibc": {
+    "v02_2-potato-glibc": {
       "runs-on": "ubuntu-latest",
       "steps": [
         {
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "uses": "docker://debian/eol:potato",
           "with": {
-            "args": "sh .extra/deb.sh ${{ matrix.dist }} diet"
+            "args": "sh .extra/deb.sh potato glibc"
           }
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "dist": [
-            "woody",
-            "sarge",
-            "etch",
-            "lenny",
-            "squeeze",
-            "wheezy",
-            "jessie",
-            "stretch"
-          ]
-        }
+        "fail-fast": true
       }
     },
-    "eol-glibc": {
+    "v03_0-woody-diet": {
       "runs-on": "ubuntu-latest",
       "steps": [
         {
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "uses": "docker://debian/eol:woody",
           "with": {
-            "args": "sh .extra/deb.sh ${{ matrix.dist }}"
+            "args": "sh .extra/deb.sh woody diet"
           }
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "dist": [
-            "potato",
-            "woody",
-            "sarge",
-            "etch",
-            "lenny",
-            "squeeze",
-            "wheezy",
-            "jessie",
-            "stretch"
-          ]
-        }
+        "fail-fast": true
       }
     },
-    "eol-klibc": {
+    "v03_0-woody-glibc": {
       "runs-on": "ubuntu-latest",
       "steps": [
         {
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "uses": "docker://debian/eol:woody",
           "with": {
-            "args": "sh .extra/deb.sh ${{ matrix.dist }} klibc"
+            "args": "sh .extra/deb.sh woody glibc"
           }
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "dist": [
-            "etch",
-            "lenny",
-            "squeeze",
-            "wheezy",
-            "jessie",
-            "stretch"
-          ]
-        }
+        "fail-fast": true
       }
     },
-    "eol-musl": {
+    "v03_1-sarge-diet": {
       "runs-on": "ubuntu-latest",
       "steps": [
         {
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "uses": "docker://debian/eol:sarge",
           "with": {
-            "args": "sh .extra/deb.sh ${{ matrix.dist }} musl"
+            "args": "sh .extra/deb.sh sarge diet"
           }
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "dist": [
-            "jessie",
-            "stretch"
-          ]
-        }
+        "fail-fast": true
       }
     },
-    "noneol": {
+    "v03_1-sarge-glibc": {
       "runs-on": "ubuntu-latest",
       "steps": [
         {
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/${{ matrix.dist }}",
+          "uses": "docker://debian/eol:sarge",
           "with": {
-            "args": "sh .extra/deb.sh ${{ matrix.dist }} ${{ matrix.libc }}"
+            "args": "sh .extra/deb.sh sarge glibc"
           }
         }
       ],
       "strategy": {
-        "fail-fast": true,
-        "matrix": {
-          "dist": [
-            "buster",
-            "bullseye",
-            "bookworm",
-            "sid"
-          ],
-          "libc": [
-            "",
-            "diet",
-            "klibc",
-            "musl"
-          ]
+        "fail-fast": true
+      }
+    },
+    "v04-etch-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:etch",
+          "with": {
+            "args": "sh .extra/deb.sh etch diet"
+          }
         }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v04-etch-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:etch",
+          "with": {
+            "args": "sh .extra/deb.sh etch glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v04-etch-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:etch",
+          "with": {
+            "args": "sh .extra/deb.sh etch klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v05-lenny-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:lenny",
+          "with": {
+            "args": "sh .extra/deb.sh lenny diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v05-lenny-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:lenny",
+          "with": {
+            "args": "sh .extra/deb.sh lenny glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v05-lenny-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:lenny",
+          "with": {
+            "args": "sh .extra/deb.sh lenny klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v06-squeeze-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:squeeze",
+          "with": {
+            "args": "sh .extra/deb.sh squeeze diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v06-squeeze-eglibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:squeeze",
+          "with": {
+            "args": "sh .extra/deb.sh squeeze eglibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v06-squeeze-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:squeeze",
+          "with": {
+            "args": "sh .extra/deb.sh squeeze klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v07-wheezy-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:wheezy",
+          "with": {
+            "args": "sh .extra/deb.sh wheezy diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v07-wheezy-eglibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:wheezy",
+          "with": {
+            "args": "sh .extra/deb.sh wheezy eglibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v07-wheezy-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:wheezy",
+          "with": {
+            "args": "sh .extra/deb.sh wheezy klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v08-jessie-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:jessie",
+          "with": {
+            "args": "sh .extra/deb.sh jessie diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v08-jessie-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:jessie",
+          "with": {
+            "args": "sh .extra/deb.sh jessie glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v08-jessie-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:jessie",
+          "with": {
+            "args": "sh .extra/deb.sh jessie klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v08-jessie-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:jessie",
+          "with": {
+            "args": "sh .extra/deb.sh jessie musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v09-stretch-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:stretch",
+          "with": {
+            "args": "sh .extra/deb.sh stretch diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v09-stretch-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:stretch",
+          "with": {
+            "args": "sh .extra/deb.sh stretch glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v09-stretch-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:stretch",
+          "with": {
+            "args": "sh .extra/deb.sh stretch klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v09-stretch-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:stretch",
+          "with": {
+            "args": "sh .extra/deb.sh stretch musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v10-buster-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/buster",
+          "with": {
+            "args": "sh .extra/deb.sh buster diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v10-buster-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/buster",
+          "with": {
+            "args": "sh .extra/deb.sh buster glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v10-buster-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/buster",
+          "with": {
+            "args": "sh .extra/deb.sh buster klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v10-buster-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/buster",
+          "with": {
+            "args": "sh .extra/deb.sh buster musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v11-bullseye-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bullseye",
+          "with": {
+            "args": "sh .extra/deb.sh bullseye diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v11-bullseye-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bullseye",
+          "with": {
+            "args": "sh .extra/deb.sh bullseye glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v11-bullseye-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bullseye",
+          "with": {
+            "args": "sh .extra/deb.sh bullseye klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v11-bullseye-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bullseye",
+          "with": {
+            "args": "sh .extra/deb.sh bullseye musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v12-bookworm-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bookworm",
+          "with": {
+            "args": "sh .extra/deb.sh bookworm diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v12-bookworm-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bookworm",
+          "with": {
+            "args": "sh .extra/deb.sh bookworm glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v12-bookworm-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bookworm",
+          "with": {
+            "args": "sh .extra/deb.sh bookworm klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "v12-bookworm-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/bookworm",
+          "with": {
+            "args": "sh .extra/deb.sh bookworm musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "z-sid-diet": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/sid",
+          "with": {
+            "args": "sh .extra/deb.sh sid diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "z-sid-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/sid",
+          "with": {
+            "args": "sh .extra/deb.sh sid glibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "z-sid-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/sid",
+          "with": {
+            "args": "sh .extra/deb.sh sid klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
+    "z-sid-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/sid",
+          "with": {
+            "args": "sh .extra/deb.sh sid musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
       }
     }
   },

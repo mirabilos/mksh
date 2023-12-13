@@ -152,7 +152,7 @@ bullseye|bookworm|sid)
 esac
 deps="$deps $bsdextrautils"
 case $libc in
-glibc)
+glibc|eglibc)
 	;;
 diet)
 	deps="$deps dietlibc-dev" ;;
