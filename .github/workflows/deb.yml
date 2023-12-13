@@ -398,7 +398,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/buster",
+          "uses": "docker://debian:buster",
           "with": {
             "args": "sh .extra/deb.sh buster diet"
           }
@@ -415,7 +415,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/buster",
+          "uses": "docker://debian:buster",
           "with": {
             "args": "sh .extra/deb.sh buster glibc"
           }
@@ -432,7 +432,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/buster",
+          "uses": "docker://debian:buster",
           "with": {
             "args": "sh .extra/deb.sh buster klibc"
           }
@@ -449,7 +449,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/buster",
+          "uses": "docker://debian:buster",
           "with": {
             "args": "sh .extra/deb.sh buster musl"
           }
@@ -466,7 +466,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bullseye",
+          "uses": "docker://debian:bullseye",
           "with": {
             "args": "sh .extra/deb.sh bullseye diet"
           }
@@ -483,7 +483,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bullseye",
+          "uses": "docker://debian:bullseye",
           "with": {
             "args": "sh .extra/deb.sh bullseye glibc"
           }
@@ -500,7 +500,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bullseye",
+          "uses": "docker://debian:bullseye",
           "with": {
             "args": "sh .extra/deb.sh bullseye klibc"
           }
@@ -517,7 +517,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bullseye",
+          "uses": "docker://debian:bullseye",
           "with": {
             "args": "sh .extra/deb.sh bullseye musl"
           }
@@ -534,7 +534,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bookworm",
+          "uses": "docker://debian:bookworm",
           "with": {
             "args": "sh .extra/deb.sh bookworm diet"
           }
@@ -551,7 +551,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bookworm",
+          "uses": "docker://debian:bookworm",
           "with": {
             "args": "sh .extra/deb.sh bookworm glibc"
           }
@@ -568,7 +568,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bookworm",
+          "uses": "docker://debian:bookworm",
           "with": {
             "args": "sh .extra/deb.sh bookworm klibc"
           }
@@ -585,7 +585,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/bookworm",
+          "uses": "docker://debian:bookworm",
           "with": {
             "args": "sh .extra/deb.sh bookworm musl"
           }
@@ -602,7 +602,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/sid",
+          "uses": "docker://debian:sid",
           "with": {
             "args": "sh .extra/deb.sh sid diet"
           }
@@ -619,7 +619,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/sid",
+          "uses": "docker://debian:sid",
           "with": {
             "args": "sh .extra/deb.sh sid glibc"
           }
@@ -636,7 +636,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/sid",
+          "uses": "docker://debian:sid",
           "with": {
             "args": "sh .extra/deb.sh sid klibc"
           }
@@ -653,7 +653,7 @@
           "uses": "actions/checkout@v4.1.1"
         },
         {
-          "uses": "docker://debian/sid",
+          "uses": "docker://debian:sid",
           "with": {
             "args": "sh .extra/deb.sh sid musl"
           }
