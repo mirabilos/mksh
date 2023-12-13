@@ -155,6 +155,12 @@ deb http://archive.debian.org/debian-security/ jessie/updates main non-free cont
 EOF
 	rm -f /etc/apt/sources.list.d/*
 	bsdextrautils=bsdmainutils
+	case $libc in
+	musl)
+		# before musl 1.1.11
+		HAVE_POSIX_UTF8_LOCALE=0; export HAVE_POSIX_UTF8_LOCALE
+		;;
+	esac
 	;;
 stretch)
 	cat >/etc/apt/sources.list <<\EOF
