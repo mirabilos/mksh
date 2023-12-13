@@ -58,16 +58,29 @@ trybuild() {
 		Grv=1
 	fi
 	rm -f "$topdir/builddir/urtmp*" utest.*
-	echo >test.wait
-	topdir="$topdir" tstloc="$tstloc" script -c 'echo 1 >"$topdir/builddir/urtmp.f"; (./test.sh -U $tstloc -v; echo $? >utest.rv) 2>&1 | tee utest.log; x=$?; sleep 1; rm -f test.wait; exit $x'
-	maxwait=0
-	while test -e test.wait; do
-		sleep 1
-		maxwait=$(expr $maxwait + 1)
-		test $maxwait -lt 900 || break
-	done
-	echo s >"$topdir/builddir/urtmp.p"
-	sleep 1 # synchronise I/O
+	case $dist in
+	slink|potato|woody)
+		: 'script(1) too old, no -c flag...'
+		echo 1 >"$topdir/builddir/urtmp.f"
+		(
+			./test.sh -U $tstloc -v -C regress:no-ctty
+			echo $? >utest.rv
+		) 2>&1 | tee utest.log
+		echo p >"$topdir/builddir/urtmp.p"
+		;;
+	*)
+		echo >test.wait
+		topdir="$topdir" tstloc="$tstloc" script -c 'echo 1 >"$topdir/builddir/urtmp.f"; (./test.sh -U $tstloc -v; echo $? >utest.rv) 2>&1 | tee utest.log; x=$?; sleep 1; rm -f test.wait; exit $x'
+		maxwait=0
+		while test -e test.wait; do
+			sleep 1
+			maxwait=$(expr $maxwait + 1)
+			test $maxwait -lt 900 || break
+		done
+		echo s >"$topdir/builddir/urtmp.p"
+		sleep 1 # synchronise I/O
+		;;
+	esac
 	# set $testrv to x unless it’s a positive integer
 	testrv=$(cat utest.rv 2>/dev/null) || testrv=x
 	case x$testrv in
