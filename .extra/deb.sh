@@ -227,7 +227,12 @@ echo ::endgroup::
 echo ::group::Build mksh
 case $libc in
 diet)
-	CC="diet -Os $sCC"
+	case $dist in
+	slink|potato|woody)
+		CC="diet $sCC -Os" ;;
+	*)
+		CC="diet -Os $sCC" ;;
+	esac
 	CFLAGS=$sCFLAGS
 	CPPFLAGS=$dCPPFLAGS
 	LDFLAGS=$sLDFLAGS
@@ -268,7 +273,12 @@ echo ::group::Build lksh
 USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN
 case $libc in
 diet)
-	CC="diet -Os $sCC"
+	case $dist in
+	slink|potato|woody)
+		CC="diet $sCC -Os" ;;
+	*)
+		CC="diet -Os $sCC" ;;
+	esac
 	CFLAGS=$sCFLAGS
 	CPPFLAGS=$sCPPFLAGS
 	LDFLAGS=$sLDFLAGS
