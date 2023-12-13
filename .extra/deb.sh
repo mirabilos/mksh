@@ -110,7 +110,7 @@ slink)
 	wextra=-W
 	HAVE_ATTRIBUTE_BOUNDED=0; export HAVE_ATTRIBUTE_BOUNDED
 	;;
-woody|sarge|etch)
+potato|woody|sarge|etch)
 	bsdextrautils=bsdmainutils
 	deps="$deps locales"
 	tstloc=en_US.UTF-8
