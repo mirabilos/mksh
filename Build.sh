@@ -1,5 +1,5 @@
 #!/bin/sh
-srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.846 2023/09/28 04:08:00 tg Exp $'
+srcversion='$MirOS: src/bin/mksh/Build.sh,v 1.853 2023/12/13 15:01:55 tg Exp $'
 set +evx
 #-
 # Copyright (c) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
@@ -368,15 +368,15 @@ cat_h_blurb() {
 }
 
 # pipe .c | ac_test[n] [!] label [!] checkif[!]0 [setlabelifcheckis[!]0] useroutput
-ac_testnnd() {
+ac_testnndnd() {
 	if test x"$1" = x"!"; then
 		fr=1
 		shift
 	else
 		fr=0
 	fi
-	ac_testinit "$@" || return 1
 	cat_h_blurb >conftest.c
+	ac_testinit "$@" || return 1
 	vv ']' "$CC $CFLAGS $Cg $CPPFLAGS $LDFLAGS $NOWARN conftest.c $LIBS $ccpr"
 	test $tcfn = no && test -f a.out && tcfn=a.out
 	test $tcfn = no && test -f a.exe && tcfn=a.exe
@@ -400,9 +400,17 @@ ac_testnnd() {
 	return 0
 }
 ac_testn() {
-	ac_testnnd "$@" || return
-	rmf conftest.c conftest.o ${tcfn}* vv.out
-	ac_testdone
+	if ac_testnndnd "$@"; then
+		rmf conftest.c conftest.o ${tcfn}* vv.out
+		ac_testdone
+	else
+		rm -f conftest.c
+	fi
+}
+ac_testnnd() {
+	if ac_testnndnd "$@"; then
+		ac_testdone
+	fi
 }
 
 # ac_ifcpp cppexpr [!] label [!] checkif[!]0 [setlabelifcheckis[!]0] useroutput
@@ -841,6 +849,11 @@ case $TARGET_OS in
 	: "${HAVE_CAN_OTWO=0}"
 	cpp_define MKSH_NO_SIGSETJMP 1
 	cpp_define MKSH_TYPEDEF_SIG_ATOMIC_T int
+	;;
+4.4BSD)
+	osnote='; assuming BOW (BSD on Windows)'
+	check_categories="$check_categories nopiddependent noxperms"
+	check_categories="$check_categories nosymlink noweirdfilenames"
 	;;
 A/UX)
 	add_cppflags -D_POSIX_SOURCE
@@ -2066,6 +2079,7 @@ EOF
 ac_header sys/select.h sys/types.h
 test "11" = "$HAVE_SYS_TIME_H$HAVE_SYS_SELECT_H" || HAVE_SELECT_TIME_H=1
 ac_test select_time_h '' 'whether <sys/time.h> and <sys/select.h> can both be included' <<-'EOF'
+	#include <sys/types.h>
 	#include <sys/time.h>
 	#include <sys/select.h>
 	#include <unistd.h>
@@ -2090,7 +2104,6 @@ ac_header stdint.h stdarg.h
 ac_header strings.h sys/types.h string.h
 ac_header termios.h
 ac_header ulimit.h sys/types.h
-ac_header values.h
 
 #
 # Environment: definitions
@@ -2344,7 +2357,7 @@ ac_test rlimit '' 'getrlimit and setrlimit' <<-'EOF'
 	}
 EOF
 
-ac_test rlim_t rlimit 0 <<-'EOF'
+ac_testnnd rlim_t rlimit 0 <<-'EOF'
 	#include <sys/types.h>
 	#if HAVE_BOTH_TIME_H && HAVE_SELECT_TIME_H
 	#include <sys/time.h>
@@ -2363,6 +2376,81 @@ ac_test rlim_t rlimit 0 <<-'EOF'
 	#include <unistd.h>
 	int main(void) { return (((int)(rlim_t)0) + isatty(0)); }
 EOF
+
+if test 10 = "$HAVE_RLIMIT$HAVE_RLIM_T"; then
+	fv=$MKSH_RLIM_T
+	fd='for what rlim_t could have been'
+	# reuses here document from above
+	if test x"$fv" = x"" || test x"$fv" = x"x"; then
+		$e ... $fd
+		vv ']' "$CPP $CFLAGS $Cg $CPPFLAGS $NOWARN conftest.c | grep -v '^#' | tr -d \\\\015 >x"
+		fx=0
+		fr=
+		while read line; do
+			case $fx in
+			0)
+				case $line in
+				*struct*[\	\ ]rlimit|*struct*[\	\ ]rlimit[\	\ \{]*)
+					fr=$line
+					fx=1
+					;;
+				esac ;;
+			1)
+				fr="$fr $line"
+				case $line in
+				*\}*)
+					fx=2
+					;;
+				esac ;;
+			esac
+		done <x
+		echo "[ $fr"
+		fr=`echo " $fr" | sed \
+		    -e 's/[	 ][	 ]*/ /g' \
+		    -e 's/^ *struct rlimit *[{] *//' \
+		    -e 's/ *;.*$//'`
+		fx=
+		case $fr in
+		*\ rlim_cur)
+			fr=`echo " $fr" | sed \
+			    -e 's/^ //' \
+			    -e 's/ rlim_cur$//'`
+			;;
+		*\ rlim_max)
+			fr=`echo " $fr" | sed \
+			    -e 's/^ //' \
+			    -e 's/ rlim_max$//'`
+			;;
+		*)
+			fr=
+			;;
+		esac
+		case $fr in
+		int|signed\ int)
+			fv=RLT_SI ;;
+		u_int|unsigned|unsigned\ int)
+			fv=RLT_UI ;;
+		long|signed\ long)
+			fv=RLT_SL ;;
+		u_long|unsigned\ long)
+			fv=RLT_UL ;;
+		long\ long|signed\ long\ long)
+			fv=RLT_SQ ;;
+		unsigned\ long\ long)
+			fv=RLT_UQ ;;
+		[a-z_]*_t)
+			fv=`echo " $fr" | sed -n '/^ \([a-z0-9_]*_t\)$/s//\1/p'` ;;
+		*)
+			fx="(could not be determined from $fr)"
+			fv= ;;
+		esac
+	else
+		fx=' (cached)'
+	fi
+	test_z "$fv" || cpp_define MKSH_RLIM_T "$fv"
+	$e "$bi==> $fd...$ao $ui$fv$ao$fx"
+	fx=
+fi
 
 ac_test get_current_dir_name <<-'EOF'
 	#define MKSH_INCLUDES_ONLY
@@ -3157,11 +3245,12 @@ if test $cm = trace; then
 		test $XgrepRV -lt 2
 	}
 	set -e
-	tsrc=$(readlink -f "$srcdir")
-	tdst=$(readlink -f .)
-	if test ${#tsrc} -lt ${#tdst}; then
+	tsrc=`readlink -f "$srcdir"`
+	tdst=`readlink -f .`
+	# some sh don’t like ${foo#bar} or ${#foo} at parse time
+	eval 'if test ${#tsrc} -lt ${#tdst}; then
 		mkr() {
-			r=$(readlink -f "$1")
+			r=`readlink -f "$1"`
 			case $r in #((
 			"$tdst"|"$tdst/"*) r="<<BLDDIR>>${r#"$tdst"}" ;;
 			"$tsrc"|"$tsrc/"*) r="<<SRCDIR>>${r#"$tsrc"}" ;;
@@ -3169,13 +3258,13 @@ if test $cm = trace; then
 		}
 	else
 		mkr() {
-			r=$(readlink -f "$1")
+			r=`readlink -f "$1"`
 			case $r in #((
 			"$tsrc"|"$tsrc/"*) r="<<SRCDIR>>${r#"$tsrc"}" ;;
 			"$tdst"|"$tdst/"*) r="<<BLDDIR>>${r#"$tdst"}" ;;
 			esac
 		}
-	fi
+	fi'
 
 	cat *.d >$tfn.c1.t
 	set -o noglob
@@ -3265,8 +3354,8 @@ LIBS				default empty; added after sources
 				[Interix] default: -lcrypt (XXX still needed?)
 NOWARN				-Wno-error or similar
 NROFF				default: nroff
-TARGET_OS			default: $(uname -s || uname)
-TARGET_OSREV			default: $(uname -r) [only needed on some OS]
+TARGET_OS			default: `uname -s || uname`
+TARGET_OSREV			default: `uname -r` [only needed on some OS]
 
 ==== feature selectors ====
 MKSH_UNLIMITED			1 to omit ulimit builtin completely
