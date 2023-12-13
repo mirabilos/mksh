@@ -2,6 +2,7 @@ set -e
 dist=$1
 libc=${2:-glibc}
 LC_ALL=C; export LC_ALL
+DEBIAN_FRONTEND=noninteractive; export DEBIAN_FRONTEND
 Grv=0
 trybuild() {
 	where=$1; shift
