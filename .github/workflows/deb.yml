@@ -119,23 +119,6 @@
         "fail-fast": true
       }
     },
-    "v04-etch-klibc": {
-      "runs-on": "ubuntu-latest",
-      "steps": [
-        {
-          "uses": "actions/checkout@v4.1.1"
-        },
-        {
-          "uses": "docker://debian/eol:etch",
-          "with": {
-            "args": "sh .extra/deb.sh etch klibc"
-          }
-        }
-      ],
-      "strategy": {
-        "fail-fast": true
-      }
-    },
     "v05-lenny-diet": {
       "runs-on": "ubuntu-latest",
       "steps": [
@@ -163,23 +146,6 @@
           "uses": "docker://debian/eol:lenny",
           "with": {
             "args": "sh .extra/deb.sh lenny glibc"
-          }
-        }
-      ],
-      "strategy": {
-        "fail-fast": true
-      }
-    },
-    "v05-lenny-klibc": {
-      "runs-on": "ubuntu-latest",
-      "steps": [
-        {
-          "uses": "actions/checkout@v4.1.1"
-        },
-        {
-          "uses": "docker://debian/eol:lenny",
-          "with": {
-            "args": "sh .extra/deb.sh lenny klibc"
           }
         }
       ],
