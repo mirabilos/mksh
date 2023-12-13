@@ -49,14 +49,21 @@ trybuild() {
 		echo ::error::rtchecks aborted
 		Grv=1
 	fi
-	perl ../../check.pl -U $tstloc -s ../../.extra/mtest.t \
-	    -p ./$tfn -v 2>&1 | tee mtest.log
-	if grep '^Total failed: 0$' mtest.log >/dev/null; then
-		echo "I: Simple tests okay."
-	else
-		echo ::error::mtests failed
-		Grv=1
-	fi
+	case $dist in
+	slink|potato|woody)
+		: 'deficiencies in printf(1) and sleep(1)'
+		;;
+	*)
+		perl ../../check.pl -U $tstloc -s ../../.extra/mtest.t \
+		    -p ./$tfn -v 2>&1 | tee mtest.log
+		if grep '^Total failed: 0$' mtest.log >/dev/null; then
+			echo "I: Simple tests okay."
+		else
+			echo ::error::mtests failed
+			Grv=1
+		fi
+		;;
+	esac
 	rm -f "$topdir/builddir/urtmp*" utest.*
 	case $dist in
 	slink|potato|woody)
