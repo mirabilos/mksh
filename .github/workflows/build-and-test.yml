@@ -1,21 +1,21 @@
 {
   "jobs": {
     "bt-asan": {
-      "runs-on": "ubuntu-latest",
+      "runs-on": "ubuntu-22.04",
       "steps": [
         {
           "name": "Cancel previous runs",
-          "uses": "styfle/cancel-workflow-action@0.11.0",
+          "uses": "styfle/cancel-workflow-action@0.12.0",
           "with": {
             "access_token": "${{ github.token }}",
             "all_but_latest": true
           }
         },
         {
-          "uses": "actions/checkout@v3.5.3"
+          "uses": "actions/checkout@v4.1.1"
         },
         {
-          "run": "(git gc || :)"
+          "run": "(git gc --quiet || :)"
         },
         {
           "run": "ASAN_OPTIONS=check_initialization_order=true:detect_stack_use_after_return=true:detect_invalid_pointer_pairs=2:dump_instruction_bytes=true:color=never:strict_string_checks=true:exitcode=251 && export ASAN_OPTIONS && case \"${{ matrix.testlksh }}\" in *L*) CONFIG_SHELL=dash; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) CONFIG_SHELL=bash; unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && export CONFIG_SHELL && env HAVE_CAN_FWRAPV=0 CFLAGS='-Og -fstack-protector-strong -Wformat -Werror=format-security -Wall -Wextra -fsanitize=address -fno-omit-frame-pointer -fno-common -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope -fstack-clash-protection' CPPFLAGS='-Wdate-time -D_FORTIFY_SOURCE=2' LDFLAGS='-Wl,-z,relro -Wl,-z,now -Wl,--as-needed' $CONFIG_SHELL Build.sh ${{ matrix.testlksh }} -r ${{ matrix.debugmode }} && script -qef -c './test.sh -e ASAN_OPTIONS=\"$ASAN_OPTIONS\"' && ./?ksh FAQ2HTML.sh && echo Alles gut."
@@ -35,14 +35,31 @@
         }
       }
     },
+    "bt-clang": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "run": "(git gc --quiet || :)"
+        },
+        {
+          "run": ": \"${CFLAGS=-O2}\"; eval \"$(env DEB_BUILD_MAINT_OPTIONS='future=+all optimize=+all,-lto hardening=+all reproducible=+all' dpkg-buildflags --export=sh || :)\"; CC=clang; export CC CFLAGS CPPFLAGS LDFLAGS; tryshell=dash; nextshell=bash; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r; if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh'; else script -q typescript ./test.sh; fi; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; echo Alles gut."
+        }
+      ],
+      "strategy": {
+        "fail-fast": true
+      }
+    },
     "bt-normal": {
       "runs-on": "${{ matrix.os }}",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.3"
+          "uses": "actions/checkout@v4.1.1"
         },
         {
-          "run": "(git gc || :)"
+          "run": "(git gc --quiet || :)"
         },
         {
           "run": "case \"${{ matrix.testlksh }}\" in *L*) USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; cp .extra/printf.c . ;; *) unset USE_PRINTF_BUILTIN; rm -f printf.c ;; esac && env CFLAGS='-O2 -Wformat-security -Wformat -Wall -Wextra' sh Build.sh ${{ matrix.testlksh }} -r && if script -qc true >/dev/null 2>&1; then script -qef -c './test.sh'; else script -q typescript ./test.sh; fi && ./?ksh FAQ2HTML.sh && echo Alles gut."
@@ -52,7 +69,7 @@
         "fail-fast": true,
         "matrix": {
           "os": [
-            "ubuntu-latest",
+            "ubuntu-20.04",
             "macos-11",
             "macos-12",
             "macos-13"
@@ -68,13 +85,13 @@
       "runs-on": "ubuntu-latest",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.3"
+          "uses": "actions/checkout@v4.1.1"
         },
         {
-          "run": "(git gc || :)"
+          "run": "(git gc --quiet || :)"
         },
         {
-          "uses": "jirutka/setup-alpine@v1.1.3",
+          "uses": "jirutka/setup-alpine@v1.1.4",
           "with": {
             "arch": "${{ matrix.alpinearch }}",
             "branch": "edge",

@@ -1,16 +1,16 @@
 {
   "jobs": {
     "vm-obsd": {
-      "runs-on": "macos-12",
+      "runs-on": "ubuntu-latest",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.3"
+          "uses": "actions/checkout@v4.1.1"
         },
         {
-          "run": "(git gc || :)"
+          "run": "(git gc --quiet || :)"
         },
         {
-          "uses": "vmactions/openbsd-vm@v0.1.1",
+          "uses": "vmactions/openbsd-vm@v1.0.4",
           "with": {
             "copyback": false,
             "mem": 2048,

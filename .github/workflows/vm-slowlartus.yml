@@ -1,20 +1,21 @@
 {
   "jobs": {
     "vm-slowlartus": {
-      "runs-on": "macos-12",
+      "runs-on": "ubuntu-latest",
       "steps": [
         {
-          "uses": "actions/checkout@v3.5.3"
+          "uses": "actions/checkout@v4.1.1"
         },
         {
-          "run": "(git gc || :)"
+          "run": "(git gc --quiet || :)"
         },
         {
-          "uses": "vmactions/solaris-vm@v0.0.9",
+          "uses": "vmactions/solaris-vm@v1.0.1",
           "with": {
             "copyback": false,
             "mem": 2048,
             "prepare": "pkgutil -y -i gcc5core",
+            "release": "11.4-gcc",
             "run": "CC=gcc; export CC; tryshell=/bin/sh; nextshell=bash; set -ex; rm -rf build; mkdir build; flag=; for dir in mksh lksh; do mkdir build/$dir; cd build/$dir; test -z \"$flag\" || cp ../../.extra/printf.c .; $tryshell ../../Build.sh $flag -r; echo 255 >test.res; echo >test.wait; :>screenlog.0; tail -f screenlog.0 & bpid=$!; screen -d -m -L sh -c './test.sh; echo $? >test.res; sleep 1; rm -f test.wait'; maxwait=0; while test -e test.wait; do sleep 1; maxwait=$(expr $maxwait + 1); test $maxwait -lt 900 || break; done; theres=$(cat test.res); echo === \"$theres\"; kill $bpid || :; test x\"$theres\" = x\"0\"; ./?ksh ../../FAQ2HTML.sh; cd ../..; tryshell=$nextshell; flag=-L; USE_PRINTF_BUILTIN=1; export USE_PRINTF_BUILTIN; CPPFLAGS=\"$CPPFLAGS -DMKSH_BINSHPOSIX -DMKSH_BINSHREDUCED\"; export CPPFLAGS; done; echo Alles gut.",
             "usesh": true
           }
