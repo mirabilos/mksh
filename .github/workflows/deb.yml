@@ -1,0 +1,148 @@
+{
+  "jobs": {
+    "eol-dietlibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "with": {
+            "args": "sh .extra/deb.sh ${{ matrix.dist }} diet"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "dist": [
+            "woody",
+            "sarge",
+            "etch",
+            "lenny",
+            "squeeze",
+            "wheezy",
+            "jessie",
+            "stretch"
+          ]
+        }
+      }
+    },
+    "eol-glibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "with": {
+            "args": "sh .extra/deb.sh ${{ matrix.dist }}"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "dist": [
+            "potato",
+            "woody",
+            "sarge",
+            "etch",
+            "lenny",
+            "squeeze",
+            "wheezy",
+            "jessie",
+            "stretch"
+          ]
+        }
+      }
+    },
+    "eol-klibc": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "with": {
+            "args": "sh .extra/deb.sh ${{ matrix.dist }} klibc"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "dist": [
+            "etch",
+            "lenny",
+            "squeeze",
+            "wheezy",
+            "jessie",
+            "stretch"
+          ]
+        }
+      }
+    },
+    "eol-musl": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/eol:${{ matrix.dist }}",
+          "with": {
+            "args": "sh .extra/deb.sh ${{ matrix.dist }} musl"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "dist": [
+            "jessie",
+            "stretch"
+          ]
+        }
+      }
+    },
+    "noneol": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4.1.1"
+        },
+        {
+          "uses": "docker://debian/${{ matrix.dist }}",
+          "with": {
+            "args": "sh .extra/deb.sh ${{ matrix.dist }} ${{ matrix.libc }}"
+          }
+        }
+      ],
+      "strategy": {
+        "fail-fast": true,
+        "matrix": {
+          "dist": [
+            "buster",
+            "bullseye",
+            "bookworm",
+            "sid"
+          ],
+          "libc": [
+            "",
+            "diet",
+            "klibc",
+            "musl"
+          ]
+        }
+      }
+    }
+  },
+  "name": "deb",
+  "on": {
+    "workflow_dispatch": null
+  }
+}

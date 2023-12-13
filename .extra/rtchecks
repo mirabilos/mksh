@@ -1,0 +1,26 @@
+typeset -i sari=0
+typeset -Ui uari=0
+typeset -i x=0
+print -r -- $((x++)):$sari=$uari. #0
+let --sari --uari
+print -r -- $((x++)):$sari=$uari. #1
+sari=2147483647 uari=2147483647
+print -r -- $((x++)):$sari=$uari. #2
+let ++sari ++uari
+print -r -- $((x++)):$sari=$uari. #3
+let --sari --uari
+let 'sari *= 2' 'uari *= 2'
+let ++sari ++uari
+print -r -- $((x++)):$sari=$uari. #4
+let ++sari ++uari
+print -r -- $((x++)):$sari=$uari. #5
+sari=-2147483648 uari=-2147483648
+print -r -- $((x++)):$sari=$uari. #6
+let --sari --uari
+print -r -- $((x++)):$sari=$uari. #7
+(( sari = -5 >> 1 ))
+((# uari = -5 >> 1 ))
+print -r -- $((x++)):$sari=$uari. #8
+(( sari = -2 ))
+((# uari = sari ))
+print -r -- $((x++)):$sari=$uari. #9
