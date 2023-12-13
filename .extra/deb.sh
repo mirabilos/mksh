@@ -196,8 +196,8 @@ mkdir builddir/full builddir/legacy
 cp .extra/printf.c builddir/legacy/
 dCC=gcc
 dCFLAGS=$(dpkg-buildflags --get CFLAGS 2>/dev/null) || dCFLAGS=-O2
-dCPPFLAGS=$(dpkg-buildflags --get CPPFLAGS 2>/dev/null)
-dLDFLAGS=$(dpkg-buildflags --get LDFLAGS 2>/dev/null)
+dCPPFLAGS=$(dpkg-buildflags --get CPPFLAGS 2>/dev/null) || dCPPFLAGS=
+dLDFLAGS=$(dpkg-buildflags --get LDFLAGS 2>/dev/null) || dLDFLAGS=
 dCFLAGS="$dCFLAGS -Wall $wextra"
 HAVE_CAN_WALL=0; export HAVE_CAN_WALL
 HAVE_LIBUTIL_H=0; export HAVE_LIBUTIL_H
